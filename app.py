@@ -70,7 +70,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.sidebar.title("🌐 온라인팀")
-page = st.sidebar.radio("메뉴", ["🏠 대시보드","📅 일정 관리","📝 제안·진행·종료","🗳️ 투표 게시판","⚙️ 구성원 관리"])
+page = st.sidebar.radio("메뉴", ["🏠 대시보드","📅 일정 관리","📝 온라인팀(행사)","🗳️ 온라인팀(관리)","⚙️ 구성원 관리"])
 st.sidebar.divider()
 current_user = st.sidebar.selectbox("현재 사용자", member_names())
 
@@ -79,7 +79,7 @@ if page == "🏠 대시보드":
     st.caption("일정 · 안건 · 투표를 한 곳에서 관리합니다.")
 
     today = date.today()
-    active_posts = [p for p in st.session_state.data["posts"] if p["status"] != "종료"]
+    active_posts = [p for p in st.session_state.data["posts"] if p.get("status") != "종료"]
     open_polls = [p for p in st.session_state.data["polls"] if not p["closed"]]
     c1,c2,c3 = st.columns(3)
     c1.metric("등록된 일정", len(st.session_state.data["events"]))
@@ -180,81 +180,189 @@ elif page == "📅 일정 관리":
                     st.success("일정이 등록되었습니다.")
                     rerun()
 
-elif page == "📝 제안·진행·종료":
-    st.title("📝 제안 · 진행 · 종료 게시판")
-    status_filter = st.radio("보기", ["전체","제안","진행","종료"], horizontal=True)
+elif page == "📝 온라인팀(행사)":
+    st.title("📝 온라인팀(행사)")
+    st.caption("행사와 관련된 아이디어, 진행 사항, 선정 결과를 관리합니다.")
 
-    left,right = st.columns([1.25,1])
-    with left:
-        posts = st.session_state.data["posts"]
-        if status_filter != "전체":
-            posts = [p for p in posts if p["status"] == status_filter]
+    status_filter = st.radio("보기", ["전체","제안","진행","미선정","종료"], horizontal=True)
 
-        for p in sorted(posts, key=lambda x:x["created_at"], reverse=True):
-            with st.container(border=True):
-                st.markdown(f"### [{p['status']}] {p['title']}")
-                st.caption(f"작성자 {p['author']} · {p['created_at']}")
-                if p.get("text"):
-                    st.write(p["text"])
-                for img in p.get("images", []):
-                    st.image(base64.b64decode(img))
-                files = p.get("files", [])
-                if files:
-                    st.caption("첨부파일")
-                    for f in files:
-                        raw = base64.b64decode(f["data"])
-                        st.download_button(f"📎 {f['name']}", raw, file_name=f["name"], key=f"dl_{p['id']}_{f['name']}")
+    posts = st.session_state.data["posts"]
+    if status_filter != "전체":
+        posts = [p for p in posts if p.get("status") == status_filter]
 
-                if p["author"] == current_user:
-                    new_status = st.selectbox(
-                        "상태 변경",
-                        ["제안","진행","종료"],
-                        index=["제안","진행","종료"].index(p["status"]),
-                        key=f"status_{p['id']}"
-                    )
-                    if st.button("상태 저장", key=f"save_{p['id']}"):
-                        p["status"] = new_status
-                        save_data()
-                        rerun()
+    if not posts:
+        st.info("아직 등록된 게시글이 없습니다.")
 
-    with right:
-        st.subheader("새 게시글")
-        with st.form("post_form", clear_on_submit=True):
-            title = st.text_input("제목")
-            status = st.selectbox("상태", ["제안","진행","종료"])
-            text = st.text_area("내용 (텍스트 입력 또는 붙여넣기)")
-            pasted_or_uploaded_images = st.file_uploader(
-                "이미지 첨부",
-                type=["png","jpg","jpeg","gif","webp"],
-                accept_multiple_files=True,
-                help="이미지를 드래그앤드롭하거나 파일로 첨부할 수 있습니다."
-            )
-            attached_files = st.file_uploader(
-                "첨부파일",
-                accept_multiple_files=True,
-                help="파일을 이곳에 드래그앤드롭해서 첨부할 수 있습니다."
-            )
-            if st.form_submit_button("게시글 등록"):
-                if not title.strip():
-                    st.error("제목을 입력해주세요.")
-                else:
-                    images = [base64.b64encode(f.getvalue()).decode() for f in (pasted_or_uploaded_images or [])]
-                    files = []
-                    for f in (attached_files or []):
-                        files.append({"name":f.name,"data":base64.b64encode(f.getvalue()).decode()})
-                    st.session_state.data["posts"].append({
-                        "id":str(uuid.uuid4()),"title":title.strip(),"author":current_user,
-                        "status":status,"text":text,"images":images,"files":files,
-                        "created_at":datetime.now().strftime("%Y-%m-%d %H:%M")
-                    })
+    for p in sorted(posts, key=lambda x:x["created_at"], reverse=True):
+        p.setdefault("comments", [])
+        with st.container(border=True):
+            # 상태는 제목 왼쪽 / 수정·삭제는 제목 오른쪽
+            h1, h2, h3 = st.columns([1.25, 5.5, 1.8])
+            with h1:
+                status_options = ["제안","진행","미선정","종료"]
+                current_status = p.get("status", "제안")
+                if current_status not in status_options:
+                    current_status = "제안"
+                new_status = st.selectbox(
+                    "상태",
+                    status_options,
+                    index=status_options.index(current_status),
+                    key=f"status_{p['id']}",
+                    label_visibility="collapsed"
+                )
+                if new_status != p.get("status"):
+                    p["status"] = new_status
                     save_data()
-                    st.success("게시글이 등록되었습니다.")
-                    rerun()
+                    st.rerun()
 
-        st.caption("※ 브라우저에서 복사한 이미지를 글 편집창에 직접 Ctrl+V로 붙이는 '리치 에디터'는 기본 Streamlit만으로는 제한이 있어, 현재 초안에서는 드래그앤드롭/파일 첨부 방식으로 구현했습니다.")
+            with h2:
+                st.markdown(f"### {p['title']}")
+                st.caption(f"작성자 {p['author']} · {p['created_at']}")
 
-elif page == "🗳️ 투표 게시판":
-    st.title("🗳️ 관리용 투표 게시판")
+            with h3:
+                if p["author"] == current_user:
+                    edit_key = f"editing_{p['id']}"
+                    if st.button("✏️ 수정", key=f"edit_{p['id']}"):
+                        st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+                    if st.button("🗑️ 삭제", key=f"delete_{p['id']}"):
+                        st.session_state.data["posts"] = [
+                            x for x in st.session_state.data["posts"] if x["id"] != p["id"]
+                        ]
+                        save_data()
+                        st.rerun()
+
+            edit_key = f"editing_{p['id']}"
+            if st.session_state.get(edit_key, False) and p["author"] == current_user:
+                st.divider()
+                with st.form(f"edit_form_{p['id']}"):
+                    edit_title = st.text_input("제목 수정", value=p["title"])
+                    edit_text = st.text_area("내용 수정", value=p.get("text",""), height=160)
+                    e1, e2 = st.columns(2)
+                    save_edit = e1.form_submit_button("수정 저장")
+                    cancel_edit = e2.form_submit_button("취소")
+                    if save_edit:
+                        if edit_title.strip():
+                            p["title"] = edit_title.strip()
+                            p["text"] = edit_text
+                            save_data()
+                            st.session_state[edit_key] = False
+                            st.rerun()
+                        else:
+                            st.error("제목을 입력해주세요.")
+                    if cancel_edit:
+                        st.session_state[edit_key] = False
+                        st.rerun()
+
+            if p.get("text"):
+                st.write(p["text"])
+
+            for img in p.get("images", []):
+                st.image(base64.b64decode(img))
+
+            files = p.get("files", [])
+            if files:
+                st.caption("첨부파일")
+                for f in files:
+                    raw = base64.b64decode(f["data"])
+                    st.download_button(
+                        f"📎 {f['name']}",
+                        raw,
+                        file_name=f["name"],
+                        key=f"dl_{p['id']}_{f['name']}"
+                    )
+
+            st.divider()
+            st.markdown("#### 💬 코멘트")
+
+            if p["comments"]:
+                for c in p["comments"]:
+                    with st.container():
+                        c1, c2 = st.columns([1, 8])
+                        with c1:
+                            color = member_color(c["author"])
+                            st.markdown(
+                                f"<div style='width:30px;height:30px;border-radius:50%;background:{color};'></div>",
+                                unsafe_allow_html=True
+                            )
+                        with c2:
+                            st.markdown(f"**{c['author']}**")
+                            st.write(c["text"])
+                            st.caption(c["created_at"])
+
+            with st.form(f"comment_form_{p['id']}", clear_on_submit=True):
+                comment_text = st.text_area(
+                    "코멘트 작성",
+                    placeholder="이 게시글에 의견을 남겨주세요.",
+                    key=f"comment_{p['id']}",
+                    label_visibility="collapsed"
+                )
+                if st.form_submit_button("코멘트 등록"):
+                    if comment_text.strip():
+                        p["comments"].append({
+                            "id": str(uuid.uuid4()),
+                            "author": current_user,
+                            "text": comment_text.strip(),
+                            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
+                        })
+                        save_data()
+                        st.rerun()
+                    else:
+                        st.warning("코멘트를 입력해주세요.")
+
+    st.divider()
+    st.subheader("➕ 새 행사 게시글 작성")
+
+    with st.form("post_form", clear_on_submit=True):
+        title = st.text_input("제목")
+        status = st.selectbox("상태", ["제안","진행","미선정","종료"])
+        text = st.text_area("내용 (텍스트 입력 또는 붙여넣기)", height=180)
+
+        pasted_or_uploaded_images = st.file_uploader(
+            "이미지 첨부",
+            type=["png","jpg","jpeg","gif","webp"],
+            accept_multiple_files=True,
+            help="이미지를 드래그앤드롭하거나 파일로 첨부할 수 있습니다."
+        )
+        attached_files = st.file_uploader(
+            "첨부파일",
+            accept_multiple_files=True,
+            help="파일을 이곳에 드래그앤드롭해서 첨부할 수 있습니다."
+        )
+
+        if st.form_submit_button("게시글 등록"):
+            if not title.strip():
+                st.error("제목을 입력해주세요.")
+            else:
+                images = [
+                    base64.b64encode(f.getvalue()).decode()
+                    for f in (pasted_or_uploaded_images or [])
+                ]
+                files = []
+                for f in (attached_files or []):
+                    files.append({
+                        "name": f.name,
+                        "data": base64.b64encode(f.getvalue()).decode()
+                    })
+
+                st.session_state.data["posts"].append({
+                    "id": str(uuid.uuid4()),
+                    "title": title.strip(),
+                    "author": current_user,
+                    "status": status,
+                    "text": text,
+                    "images": images,
+                    "files": files,
+                    "comments": [],
+                    "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")
+                })
+                save_data()
+                st.success("게시글이 등록되었습니다.")
+                st.rerun()
+
+    st.caption("※ 현재 초안은 기본 Streamlit 구성입니다. 이미지·파일은 드래그앤드롭 첨부가 가능하며, 향후 리치 에디터를 붙이면 본문 안에 이미지를 직접 붙여넣는 방식으로 더 발전시킬 수 있습니다.")
+
+elif page == "🗳️ 온라인팀(관리)":
+    st.title("🗳️ 온라인팀(관리)")
     tab1,tab2 = st.tabs(["투표하기","새 투표"])
 
     with tab1:
