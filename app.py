@@ -543,7 +543,7 @@ with st.sidebar:
     st.caption(f"ⓒ {kst_today().year} {COPYRIGHT_OWNER} All Rights Reserved.")
     st.caption(f"배포 버전: {APP_VERSION} RELEASE")
 
-if current_user is None:
+if names and current_user is None:
     st.title("🌐 온라인팀 통합관리시스템")
     st.info("왼쪽 사이드바에서 사용자를 선택하고 비밀번호를 확인해주세요.")
     st.stop()
