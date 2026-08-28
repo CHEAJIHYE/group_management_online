@@ -373,20 +373,6 @@ def render_week_block(week_dates, visible_schedules, data, week_key, current_mon
         col_end = min(6, (min(s_end, week_end) - week_start).days)
         week_events.append((col_start, col_end, s))
 
-    # 날짜 숫자 버튼 줄 (7등분 - 항상 정확히 요일과 매칭됨)
-    day_cols = st.columns(7)
-    for i, d_ in enumerate(week_dates):
-        with day_cols[i]:
-            if current_month is None or d_.month == current_month:
-                if st.button(str(d_.day), key=f"day_{week_key}_{d_.isoformat()}"):
-                    open_new_schedule_dialog(d_)
-                    st.rerun()
-            else:
-                st.markdown(
-                    f"<div style='color:#ccc;font-size:12px;text-align:center'>{d_.day}</div>",
-                    unsafe_allow_html=True,
-                )
-
     # 겹치지 않는 일정끼리 같은 줄(레인)에 묶기
     lanes = []
     for col_start, col_end, s in sorted(week_events, key=lambda x: (x[0], -(x[1] - x[0]))):
@@ -400,42 +386,83 @@ def render_week_block(week_dates, visible_schedules, data, week_key, current_mon
             lane_idx = len(lanes) - 1
         lanes[lane_idx].append((col_start, col_end, s))
 
-    # 각 레인을 (여백/일정/여백 ...) 비율의 st.columns로 렌더링 -> 항상 정확한 날짜 위치
-    for items in lanes:
-        items.sort(key=lambda x: x[0])
-        segments = []  # (kind, width, schedule|None)
-        cursor = 0
-        for col_start, col_end, s in items:
-            gap = col_start - cursor
-            if gap > 0:
-                segments.append(("gap", gap, None))
-            segments.append(("event", col_end - col_start + 1, s))
-            cursor = col_end + 1
-        trailing = 7 - cursor
-        if trailing > 0:
-            segments.append(("gap", trailing, None))
+    MAX_VISIBLE_LANES = 5
+    show_all_key = f"{week_key}_showall"
+    show_all = st.session_state.get(show_all_key, False)
+    visible_lanes = lanes if show_all else lanes[:MAX_VISIBLE_LANES]
+    hidden_count = max(0, len(lanes) - MAX_VISIBLE_LANES)
 
-        lane_cols = st.columns([seg[1] for seg in segments])
-        for col, (kind, _, s) in zip(lane_cols, segments):
-            if kind != "event":
-                continue
-            color = owner_color(s["owner"], data)
-            cell_key = f"{week_key}_ev_{s['id']}"
-            st.markdown(
-                f"<style>.st-key-{cell_key} button {{background:{color} !important;"
-                "color:#333 !important;border:none !important;font-size:12.5px !important;"
-                "padding:2px 8px !important;white-space:nowrap;overflow:hidden;"
-                "text-overflow:ellipsis;text-align:left !important;justify-content:flex-start !important;}"
-                f".st-key-{cell_key} button:hover {{filter:brightness(0.92);}}</style>",
-                unsafe_allow_html=True,
-            )
-            with col:
-                with st.container(key=cell_key):
-                    if st.button(s["title"], key=f"evbtn_{week_key}_{s['id']}", width="stretch"):
-                        open_view_schedule_dialog(s["id"])
+    wrap_key = f"{week_key}_wrap"
+    st.markdown(
+        f"<style>.st-key-{wrap_key} div[data-testid='stHorizontalBlock']"
+        "{margin-top:1px !important;margin-bottom:1px !important;}"
+        f".st-key-{wrap_key} div[data-testid='stVerticalBlock']"
+        "{gap:1px !important;}</style>",
+        unsafe_allow_html=True,
+    )
+
+    with st.container(key=wrap_key):
+        # 날짜 숫자 버튼 줄 (7등분 - 항상 정확히 요일과 매칭됨)
+        day_cols = st.columns(7)
+        for i, d_ in enumerate(week_dates):
+            with day_cols[i]:
+                if current_month is None or d_.month == current_month:
+                    if st.button(str(d_.day), key=f"day_{week_key}_{d_.isoformat()}"):
+                        open_new_schedule_dialog(d_)
                         st.rerun()
-    if not lanes:
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        f"<div style='color:#ccc;font-size:12px;text-align:center'>{d_.day}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+        # 각 레인을 (여백/일정/여백 ...) 비율의 st.columns로 렌더링 -> 항상 정확한 날짜 위치
+        for items in visible_lanes:
+            items.sort(key=lambda x: x[0])
+            segments = []  # (kind, width, schedule|None)
+            cursor = 0
+            for col_start, col_end, s in items:
+                gap = col_start - cursor
+                if gap > 0:
+                    segments.append(("gap", gap, None))
+                segments.append(("event", col_end - col_start + 1, s))
+                cursor = col_end + 1
+            trailing = 7 - cursor
+            if trailing > 0:
+                segments.append(("gap", trailing, None))
+
+            lane_cols = st.columns([seg[1] for seg in segments])
+            for col, (kind, _, s) in zip(lane_cols, segments):
+                if kind != "event":
+                    continue
+                color = owner_color(s["owner"], data)
+                cell_key = f"{week_key}_ev_{s['id']}"
+                st.markdown(
+                    f"<style>.st-key-{cell_key} button {{background:{color} !important;"
+                    "color:#333 !important;border:none !important;font-size:12.5px !important;"
+                    "padding:2px 8px !important;white-space:nowrap;overflow:hidden;"
+                    "text-overflow:ellipsis;text-align:left !important;justify-content:flex-start !important;}"
+                    f".st-key-{cell_key} button:hover {{filter:brightness(0.92);}}</style>",
+                    unsafe_allow_html=True,
+                )
+                with col:
+                    with st.container(key=cell_key):
+                        if st.button(s["title"], key=f"evbtn_{week_key}_{s['id']}", width="stretch"):
+                            open_view_schedule_dialog(s["id"])
+                            st.rerun()
+
+        if hidden_count > 0 and not show_all:
+            if st.button(f"더보기 +{hidden_count}개", key=f"{week_key}_more_btn"):
+                st.session_state[show_all_key] = True
+                st.rerun()
+        elif show_all and hidden_count > 0:
+            if st.button("접기", key=f"{week_key}_less_btn"):
+                st.session_state[show_all_key] = False
+                st.rerun()
+
+        if not lanes:
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
     st.markdown(
         "<hr style='margin:4px 0;border:none;border-top:1px solid #eee'>", unsafe_allow_html=True
     )
@@ -681,27 +708,29 @@ def render_comments(p, board_name, current_user, data):
     def render_one(c, indent=0):
         editing = st.session_state.get(f"editcm_{c['id']}", False)
         prefix = "&nbsp;&nbsp;&nbsp;&nbsp;" * indent
-        c1, c2, c3, c4 = st.columns([9, 1, 1, 1])
-        with c1:
+        text_col, btn_group = st.columns([9, 3])
+        with text_col:
             if editing:
                 pass
             else:
                 st.markdown(f"{prefix}**{c['author']}** ({c['time']}): {c['text']}", unsafe_allow_html=True)
-        with c2:
-            if st.button("답변", key=f"replybtn_{c['id']}"):
-                st.session_state[f"replying_{c['id']}"] = not st.session_state.get(f"replying_{c['id']}", False)
-        if c["author"] == current_user:
-            with c3:
-                if not editing:
-                    if st.button("수정", key=f"cmeditbtn_{c['id']}"):
-                        st.session_state[f"editcm_{c['id']}"] = True
+        with btn_group:
+            c2, c3, c4 = st.columns([1, 1, 1], gap="xxsmall")
+            with c2:
+                if st.button("답변", key=f"replybtn_{c['id']}"):
+                    st.session_state[f"replying_{c['id']}"] = not st.session_state.get(f"replying_{c['id']}", False)
+            if c["author"] == current_user:
+                with c3:
+                    if not editing:
+                        if st.button("수정", key=f"cmeditbtn_{c['id']}"):
+                            st.session_state[f"editcm_{c['id']}"] = True
+                            st.rerun()
+                with c4:
+                    if st.button("삭제", key=f"cmdel_{c['id']}"):
+                        p["comments"] = [x for x in p["comments"] if x["id"] != c["id"]]
+                        add_change_log(data, current_user, "삭제", "댓글", c["text"][:30], board_name)
+                        persist()
                         st.rerun()
-            with c4:
-                if st.button("삭제", key=f"cmdel_{c['id']}"):
-                    p["comments"] = [x for x in p["comments"] if x["id"] != c["id"]]
-                    add_change_log(data, current_user, "삭제", "댓글", c["text"][:30], board_name)
-                    persist()
-                    st.rerun()
 
         if editing:
             new_text = st.text_input(
@@ -1152,7 +1181,7 @@ elif page == "온라인팀(행사)":
 
     for p in shown:
         with st.container(border=True):
-            status_col, spacer_col, edit_col, del_col = st.columns([3, 5, 1, 1])
+            status_col, spacer_col, btn_group = st.columns([3, 5, 2])
             with status_col:
                 new_status = st.selectbox(
                     "상태", STATUS_LIST, index=STATUS_LIST.index(p["status"]),
@@ -1167,15 +1196,17 @@ elif page == "온라인팀(행사)":
                     persist()
                     st.rerun()
             if p["author"] == current_user:
-                edit_key = f"editing_event_{p['id']}"
-                if edit_col.button("수정", key=f"edit_btn_{p['id']}"):
-                    st.session_state[edit_key] = not st.session_state.get(edit_key, False)
-                    st.rerun()
-                if del_col.button("삭제", key=f"del_btn_{p['id']}"):
-                    add_change_log(data, current_user, "삭제", "게시글", p["title"], "event")
-                    data["event_posts"] = [x for x in data["event_posts"] if x["id"] != p["id"]]
-                    persist()
-                    st.rerun()
+                with btn_group:
+                    edit_col, del_col = st.columns([1, 1], gap="xxsmall")
+                    edit_key = f"editing_event_{p['id']}"
+                    if edit_col.button("수정", key=f"edit_btn_{p['id']}"):
+                        st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+                        st.rerun()
+                    if del_col.button("삭제", key=f"del_btn_{p['id']}"):
+                        add_change_log(data, current_user, "삭제", "게시글", p["title"], "event")
+                        data["event_posts"] = [x for x in data["event_posts"] if x["id"] != p["id"]]
+                        persist()
+                        st.rerun()
 
             st.markdown(f"### {p['title']}")
             st.caption(f"작성자 {p['author']} · {p['created_at']}")
@@ -1345,7 +1376,7 @@ elif page == "온라인팀(관리)":
 
     for p in posts:
         with st.container(border=True):
-            status_col, spacer_col, edit_col, del_col = st.columns([3, 5, 1, 1])
+            status_col, spacer_col, btn_group = st.columns([3, 5, 2])
             with status_col:
                 cur_status = p.get("status", "등록")
                 new_status = st.selectbox(
@@ -1360,14 +1391,16 @@ elif page == "온라인팀(관리)":
                     persist()
                     st.rerun()
             if p["author"] == current_user:
-                if edit_col.button("수정", key=f"aedit_{p['id']}"):
-                    st.session_state[f"admin_editing_{p['id']}"] = not st.session_state.get(f"admin_editing_{p['id']}", False)
-                    st.rerun()
-                if del_col.button("삭제", key=f"adel_{p['id']}"):
-                    add_change_log(data, current_user, "삭제", "게시글", p["title"], "admin")
-                    data["admin_posts"] = [x for x in data["admin_posts"] if x["id"] != p["id"]]
-                    persist()
-                    st.rerun()
+                with btn_group:
+                    edit_col, del_col = st.columns([1, 1], gap="xxsmall")
+                    if edit_col.button("수정", key=f"aedit_{p['id']}"):
+                        st.session_state[f"admin_editing_{p['id']}"] = not st.session_state.get(f"admin_editing_{p['id']}", False)
+                        st.rerun()
+                    if del_col.button("삭제", key=f"adel_{p['id']}"):
+                        add_change_log(data, current_user, "삭제", "게시글", p["title"], "admin")
+                        data["admin_posts"] = [x for x in data["admin_posts"] if x["id"] != p["id"]]
+                        persist()
+                        st.rerun()
 
             title_prefix = "🗳️ " if p.get("vote") else ""
             if vote_all_voted(p, data):
@@ -1433,7 +1466,14 @@ elif page == "온라인팀(관리)":
                 already_voted = len(my_votes) > 0
 
                 if already_voted:
-                    st.info("✅ 이미 투표하셨습니다: " + ", ".join(options[i]["text"] for i in my_votes))
+                    info_col, reselect_col = st.columns([5, 1])
+                    info_col.info("✅ 이미 투표하셨습니다: " + ", ".join(options[i]["text"] for i in my_votes))
+                    if reselect_col.button("다시 선택하기", key=f"vote_reselect_{p['id']}"):
+                        for o in options:
+                            if current_user in o["voters"]:
+                                o["voters"].remove(current_user)
+                        persist()
+                        st.rerun()
                 else:
                     if vote.get("multi"):
                         picked = st.multiselect(
@@ -1459,9 +1499,17 @@ elif page == "온라인팀(관리)":
                             st.rerun()
 
                 st.markdown("**👥 투표자 현황**")
+                member_position_map = {m["name"]: m.get("position", "") for m in data["members"]}
+                seen_voters = []
                 for o in options:
-                    voters_str = ", ".join(o["voters"]) if o["voters"] else "-"
-                    st.markdown(f"**{o['text']}** : {voters_str}")
+                    for v in o["voters"]:
+                        if v not in seen_voters:
+                            seen_voters.append(v)
+                if seen_voters:
+                    display_list = [f"{v} {member_position_map.get(v, '')}".strip() for v in seen_voters]
+                    st.markdown(", ".join(display_list))
+                else:
+                    st.markdown("-")
 
             st.markdown("**💬 댓글**")
             render_comments(p, "admin", current_user, data)
