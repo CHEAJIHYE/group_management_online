@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.16"
+APP_VERSION = "v7.17"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -330,37 +330,36 @@ QUILL_TOOLBAR = [
 ]
 
 # streamlit-quill(내부 Quill 버전)의 글꼴/크기 드롭다운은 목록을 펼치면 실제 항목명 대신
-# 현재 선택된 값("Normal" 등)이 모든 줄에 반복 표시되는 실제 렌더링 버그가 있음을
-# 사용자 확인으로 재현했습니다 (커스텀 값/기본 제공 값 모두 동일하게 깨짐 → 이 컴포넌트
-# 자체의 프론트엔드 버그로 판단, Python 쪽 설정으로는 고칠 수 없어 드롭다운 자체를
-# 툴바에서 제거했습니다). 대신 아무 서식도 고르지 않은 기본 글자가 맑은 고딕/11pt로
-# 보이도록 CSS로 고정합니다.
-# streamlit-quill(내부 Quill 버전)의 글꼴/크기 드롭다운은 목록을 펼치면 실제 항목명 대신
-# 현재 선택된 값("Normal" 등)이 모든 줄에 반복 표시되는 실제 렌더링 버그가 있음을
-# 사용자 확인으로 재현했습니다 (커스텀 값/기본 제공 값 모두 동일하게 깨짐 → 이 컴포넌트
-# 자체의 프론트엔드 버그로 판단, Python 쪽 설정으로는 고칠 수 없어 드롭다운 자체를
-# 툴바에서 제거했습니다). 대신 아무 서식도 고르지 않은 기본 글자가 맑은 고딕으로 보이도록
-# CSS로 고정하고, 글자 크기는 별도의 (정상 작동하는) Streamlit 포인트 선택창으로 대체합니다.
-QUILL_CUSTOM_CSS = (
-    ".ql-editor {font-family:'맑은 고딕','Malgun Gothic',sans-serif !important;}"
-)
+# 현재 선택된 값("Normal" 등)이 모든 줄에 반복 표시되는 실제 렌더링 버그가 있어(사용자 확인
+# 재현), 내장 드롭다운 대신 정상 작동하는 별도의 Streamlit 드롭다운(글꼴 + 크기)을
+# 편집기 위에 배치합니다.
+QUILL_FONT_MAP = {
+    "맑은 고딕": "'맑은 고딕','Malgun Gothic',sans-serif",
+    "고딕체(Sans-serif)": "sans-serif",
+    "명조체(Serif)": "serif",
+    "고정폭(Monospace)": "monospace",
+}
+QUILL_SIZE_MAP = {"Small": "10pt", "Medium": "12pt", "Large": "16pt"}
 
 
 def rich_text_input(label, value="", key=None, height=160):
     """가능하면 위지윅(서식) 에디터를, streamlit-quill 미설치 시 일반 텍스트 입력으로 대체합니다.
-    글꼴 크기는 Quill 내장 드롭다운이 아니라(실제 렌더링 버그가 확인되어) 별도의
-    포인트 단위 선택창으로 제공합니다."""
+    글꼴/크기는 Quill 내장 드롭다운이 아니라(실제 렌더링 버그가 확인되어) 별도의
+    정상 작동하는 Streamlit 드롭다운으로 제공합니다."""
     if QUILL_AVAILABLE:
         st.caption(label)
-        size_key = f"{key}_ptsize"
-        pt_size = st.selectbox(
-            "글자 크기", ["9pt", "10pt", "11pt", "12pt", "14pt", "16pt", "18pt", "20pt", "24pt"],
-            index=2, key=size_key, label_visibility="collapsed",
+        fcol, scol = st.columns(2)
+        font_choice = fcol.selectbox(
+            "글꼴", list(QUILL_FONT_MAP.keys()), key=f"{key}_font", label_visibility="collapsed",
+        )
+        size_choice = scol.selectbox(
+            "크기", list(QUILL_SIZE_MAP.keys()), index=1, key=f"{key}_size", label_visibility="collapsed",
         )
         wrap_key = f"{key}_qwrap"
         st.markdown(
-            f"<style>{QUILL_CUSTOM_CSS}.st-key-{wrap_key} .ql-editor "
-            f"{{font-size:{pt_size} !important;}}</style>",
+            f"<style>.st-key-{wrap_key} .ql-editor {{"
+            f"font-family:{QUILL_FONT_MAP[font_choice]} !important;"
+            f"font-size:{QUILL_SIZE_MAP[size_choice]} !important;}}</style>",
             unsafe_allow_html=True,
         )
         with st.container(key=wrap_key):
@@ -371,134 +370,6 @@ def rich_text_input(label, value="", key=None, height=160):
     st.caption(f"{label}  ·  서식 편집기를 쓰려면 `pip install streamlit-quill` 후 새로고침 해주세요.")
     return st.text_area(label, value=value, key=key, height=height, label_visibility="collapsed")
 
-
-def tsv_to_html_table(tsv_text):
-    """엑셀 등에서 복사한 탭 구분 텍스트를 실제 HTML 표로 변환합니다.
-    (Quill 에디터는 표 구조를 이해하지 못해 붙여넣기 시 서식이 사라지므로,
-    별도의 입력창에서 원본 그대로 붙여넣게 한 뒤 이 함수로 표를 만듭니다.)"""
-    import html as htmllib
-    rows = [r for r in tsv_text.split("\n") if r.strip() != ""]
-    if not rows:
-        return ""
-    html_rows = []
-    for i, row in enumerate(rows):
-        cells = row.split("\t")
-        tag = "th" if i == 0 else "td"
-        cells_html = "".join(f"<{tag}>{htmllib.escape(c)}</{tag}>" for c in cells)
-        html_rows.append(f"<tr>{cells_html}</tr>")
-    return "<table class='pasted-excel-table'>" + "".join(html_rows) + "</table>"
-
-
-_KOREAN_FONT_CANDIDATES = [
-    # Linux (Noto CJK)
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-    # Windows (맑은 고딕)
-    "C:/Windows/Fonts/malgun.ttf",
-    "C:/Windows/Fonts/malgunbd.ttf",
-    # macOS
-    "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
-    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-]
-
-
-def find_korean_font():
-    """이 서버에서 실제로 찾을 수 있는 한글 지원 폰트 경로를 반환합니다 (없으면 None)."""
-    for path in _KOREAN_FONT_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    return None
-
-
-def render_table_as_image_b64(tsv_text, font_path):
-    """탭 구분 텍스트를 표 모양의 PNG 이미지로 그려 base64 문자열로 반환합니다."""
-    from PIL import ImageDraw, ImageFont
-
-    rows = [r.split("\t") for r in tsv_text.split("\n") if r.strip() != ""]
-    if not rows:
-        return None
-
-    font_size = 16
-    font = ImageFont.truetype(font_path, font_size)
-    pad_x, pad_y = 14, 10
-    n_cols = max(len(r) for r in rows)
-    rows = [r + [""] * (n_cols - len(r)) for r in rows]
-
-    tmp_img = Image.new("RGB", (10, 10))
-    tmp_draw = ImageDraw.Draw(tmp_img)
-    col_widths = [0] * n_cols
-    row_height = 0
-    for row in rows:
-        for ci, cell in enumerate(row):
-            bbox = tmp_draw.textbbox((0, 0), cell, font=font)
-            col_widths[ci] = max(col_widths[ci], (bbox[2] - bbox[0]) + pad_x * 2)
-            row_height = max(row_height, (bbox[3] - bbox[1]) + pad_y * 2)
-
-    total_w = sum(col_widths) + 1
-    total_h = row_height * len(rows) + 1
-    img = Image.new("RGB", (total_w, total_h), "white")
-    draw = ImageDraw.Draw(img)
-
-    y = 0
-    for ri, row in enumerate(rows):
-        x = 0
-        is_header = ri == 0
-        for ci, cell in enumerate(row):
-            w = col_widths[ci]
-            if is_header:
-                draw.rectangle([x, y, x + w, y + row_height], fill="#f0f0f0")
-            draw.rectangle([x, y, x + w, y + row_height], outline="#cccccc")
-            draw.text((x + pad_x, y + pad_y), cell, fill="#222222", font=font)
-            x += w
-        y += row_height
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
-
-
-def table_paste_input(key):
-    """엑셀/스프레드시트에서 복사한 표를 그대로 붙여넣을 수 있는 보조 입력창.
-    (서식 편집기 자체는 표 구조를 이해하지 못해 접힌 칸 없이 바로 보이도록 배치합니다.)
-    반환값은 변환된 HTML 문자열(붙여넣은 내용이 없으면 빈 문자열)입니다."""
-    st.markdown(
-        "<div style='font-size:12.5px;color:#666;margin:2px 0 10px 0;line-height:1.5'>"
-        "📋 엑셀에서 표를 복사(Ctrl+C)한 뒤 아래에 붙여넣으면(Ctrl+V) 게시글 맨 아래에 "
-        "삽입됩니다. (서식 편집기 위쪽에는 직접 붙여넣기가 되지 않아 이 칸을 함께 씁니다)</div>",
-        unsafe_allow_html=True,
-    )
-    paste_mode = st.selectbox(
-        "붙여넣기 방식", ["표(HTML)로 붙여넣기", "🖼️ 이미지로 붙여넣기"],
-        key=f"{key}_mode", label_visibility="collapsed",
-    )
-    pasted = st.text_area(
-        "엑셀/표 붙여넣기", key=f"{key}_paste", height=80, label_visibility="collapsed",
-        placeholder="여기에 엑셀 표를 붙여넣으세요 (Ctrl+V)",
-    )
-    as_image = paste_mode == "🖼️ 이미지로 붙여넣기"
-
-    if not pasted.strip():
-        return ""
-
-    if as_image:
-        font_path = find_korean_font()
-        if font_path is None:
-            st.warning(
-                "이 서버에서 한글을 지원하는 폰트를 찾지 못해 이미지로 변환할 수 없습니다. "
-                "표(HTML) 형태로 대신 삽입됩니다."
-            )
-            st.caption("미리보기 (표)")
-            st.markdown(tsv_to_html_table(pasted), unsafe_allow_html=True)
-            return tsv_to_html_table(pasted)
-        img_b64 = render_table_as_image_b64(pasted, font_path)
-        st.caption("미리보기 (이미지)")
-        st.image(base64.b64decode(img_b64))
-        return f"<img src='data:image/png;base64,{img_b64}' alt='붙여넣은 표'>"
-    else:
-        st.caption("미리보기 (표)")
-        st.markdown(tsv_to_html_table(pasted), unsafe_allow_html=True)
-    return tsv_to_html_table(pasted) if pasted.strip() else ""
 
 
 def extract_mentions(text, data):
@@ -1721,7 +1592,6 @@ elif page == "온라인팀(행사)":
                 st.markdown("#### ➕ 새 행사 게시글 작성 (상태: 💡 제안)")
                 e_title = st.text_input("제목", key="new_event_title")
                 e_content = rich_text_input("내용", key="new_event_content")
-                e_table_html = table_paste_input("new_event")
                 e_files = st.file_uploader(
                     "첨부파일 (이미지 포함, 드래그앤드롭 지원)", accept_multiple_files=True, key="new_event_files"
                 )
@@ -1729,7 +1599,7 @@ elif page == "온라인팀(행사)":
                     if not e_title.strip():
                         st.warning("제목을 입력해주세요.")
                     else:
-                        final_content = (e_content or "") + e_table_html
+                        final_content = e_content or ""
                         data["event_posts"].append(
                             {
                                 "id": new_id(), "title": e_title.strip(), "status": "제안",
@@ -1816,7 +1686,6 @@ elif page == "온라인팀(행사)":
             if p["author"] == current_user and st.session_state.get(f"editing_event_{p['id']}"):
                 new_title = st.text_input("제목 수정", value=p["title"], key=f"et_{p['id']}")
                 new_content = rich_text_input("내용 수정", value=p["content"], key=f"ec_{p['id']}")
-                new_table_html = table_paste_input(f"ec_{p['id']}")
                 st.write("기존 첨부파일 (삭제할 항목 체크)")
                 keep_flags = []
                 for idx, att in enumerate(existing_atts):
@@ -1830,7 +1699,7 @@ elif page == "온라인팀(행사)":
                     added = [file_to_b64(f_) for f_ in (add_files or [])]
                     add_change_log(data, current_user, "수정", "게시글", new_title.strip() or p["title"], "event")
                     p["title"] = new_title.strip() or p["title"]
-                    p["content"] = (new_content or "") + new_table_html
+                    p["content"] = new_content or ""
                     p["files"] = kept + added
                     p["images"] = []
                     persist()
@@ -1874,7 +1743,6 @@ elif page == "온라인팀(관리)":
                     format_func=lambda s: f"{STATUS_ICONS.get(s, '')} {s}",
                 )
                 a_content = rich_text_input("내용", key="new_admin_content")
-                a_table_html = table_paste_input("new_admin")
                 a_files = st.file_uploader(
                     "첨부파일 (이미지 포함, 드래그앤드롭 지원)", accept_multiple_files=True, key="new_admin_files"
                 )
@@ -1938,7 +1806,7 @@ elif page == "온라인팀(관리)":
                                 "options": [{"text": o, "voters": []} for o in opts],
                             }
                         new_post = {
-                            "id": new_id(), "title": a_title.strip(), "content": (a_content or "") + a_table_html,
+                            "id": new_id(), "title": a_title.strip(), "content": a_content or "",
                             "status": a_status, "author": current_user, "created_at": now_str(),
                             "comments": [], "images": [],
                             "files": [file_to_b64(f_) for f_ in (a_files or [])],
@@ -2032,7 +1900,6 @@ elif page == "온라인팀(관리)":
             if p["author"] == current_user and st.session_state.get(f"admin_editing_{p['id']}"):
                 new_title = st.text_input("제목 수정", value=p["title"], key=f"at_{p['id']}")
                 new_content = rich_text_input("내용 수정", value=p.get("content", ""), key=f"ac_{p['id']}")
-                new_table_html = table_paste_input(f"ac_{p['id']}")
 
                 st.write("기존 첨부파일 (삭제할 항목 체크)")
                 keep_flags = []
@@ -2088,7 +1955,7 @@ elif page == "온라인팀(관리)":
                     added = [file_to_b64(f_) for f_ in (add_files or [])]
                     add_change_log(data, current_user, "수정", "게시글", new_title.strip() or p["title"], "admin")
                     p["title"] = new_title.strip() or p["title"]
-                    p["content"] = (new_content or "") + new_table_html
+                    p["content"] = new_content or ""
                     p["files"] = kept + added
                     p["images"] = []
                     if p.get("vote") and new_vote_options_text is not None:
