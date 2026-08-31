@@ -41,6 +41,11 @@ st.markdown(
     div[data-testid="stVerticalBlock"] { gap: 0.25rem !important; }
     div[data-testid="stHorizontalBlock"] { margin-top: 0rem !important; margin-bottom: 0rem !important; }
     div[data-testid="element-container"] { margin-bottom: 0rem !important; }
+    table.pasted-excel-table { border-collapse: collapse; margin: 8px 0; }
+    table.pasted-excel-table th, table.pasted-excel-table td {
+        border: 1px solid #ccc; padding: 4px 10px; font-size: 13px;
+    }
+    table.pasted-excel-table th { background: #f5f5f5; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -338,6 +343,40 @@ def rich_text_input(label, value="", key=None, height=160):
     return st.text_area(label, value=value, key=key, height=height, label_visibility="collapsed")
 
 
+def tsv_to_html_table(tsv_text):
+    """엑셀 등에서 복사한 탭 구분 텍스트를 실제 HTML 표로 변환합니다.
+    (Quill 에디터는 표 구조를 이해하지 못해 붙여넣기 시 서식이 사라지므로,
+    별도의 입력창에서 원본 그대로 붙여넣게 한 뒤 이 함수로 표를 만듭니다.)"""
+    import html as htmllib
+    rows = [r for r in tsv_text.split("\n") if r.strip() != ""]
+    if not rows:
+        return ""
+    html_rows = []
+    for i, row in enumerate(rows):
+        cells = row.split("\t")
+        tag = "th" if i == 0 else "td"
+        cells_html = "".join(f"<{tag}>{htmllib.escape(c)}</{tag}>" for c in cells)
+        html_rows.append(f"<tr>{cells_html}</tr>")
+    return "<table class='pasted-excel-table'>" + "".join(html_rows) + "</table>"
+
+
+def table_paste_input(key):
+    """엑셀/스프레드시트에서 복사한 표를 그대로 붙여넣을 수 있는 보조 입력창.
+    반환값은 변환된 HTML 표 문자열(붙여넣은 내용이 없으면 빈 문자열)입니다."""
+    with st.expander("📋 엑셀/표 데이터 붙여넣기 (서식 그대로 유지)"):
+        st.caption(
+            "엑셀에서 표를 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣으면(Ctrl+V), "
+            "표 형태 그대로 게시글 맨 아래에 삽입됩니다."
+        )
+        pasted = st.text_area(
+            "여기에 붙여넣기", key=f"{key}_paste", height=100, label_visibility="collapsed",
+        )
+        if pasted.strip():
+            st.caption("미리보기")
+            st.markdown(tsv_to_html_table(pasted), unsafe_allow_html=True)
+        return tsv_to_html_table(pasted) if pasted.strip() else ""
+
+
 def extract_mentions(text, data):
     names = member_names(data)
     found = set()
@@ -375,118 +414,249 @@ def dash_metric(label, count, page_name, **filters):
         go_to(page_name, **filters)
 
 
-def _build_backup_index_html(data, image_manifest, file_manifest):
-    schedule_rows = "".join(
-        f"<tr><td>{s['title']}</td><td>{s['start']} ~ {s['end']}</td>"
-        f"<td>{s['owner']}</td><td>{s['category']}</td></tr>"
-        for s in data["schedules"]
-    )
-    event_rows = "".join(
-        f"<tr><td>[{p['status']}]</td><td>{p['title']}</td><td>{p['author']}</td>"
-        f"<td>{p['created_at']}</td><td>{p.get('content', '')}</td></tr>"
-        for p in data["event_posts"]
-    )
-    admin_rows = "".join(
-        f"<tr><td>[{p.get('status', '등록')}]</td><td>{p['title']}</td><td>{p['author']}</td>"
-        f"<td>{p['created_at']}</td><td>{p.get('content', '')}</td></tr>"
-        for p in data["admin_posts"]
-    )
-    image_items = "".join(
-        f"<li>{title} — <a href='{path}' target='_blank'>{path}</a><br>"
-        f"<img src='{path}' style='max-width:300px;border:1px solid #ddd;margin-top:4px'></li>"
-        for title, path in image_manifest
-    ) or "<li>없음</li>"
-    file_items = "".join(
-        f"<li>{title} — <a href='{path}' target='_blank'>{path}</a></li>" for title, path in file_manifest
-    ) or "<li>없음</li>"
+def _board_display_name(board_key):
+    return {"event": "온라인팀(행사)", "admin": "온라인팀(관리)"}.get(board_key, board_key)
 
+
+def _build_board_html(page_title, posts_for_js):
+    """게시판 형태(좌측 글 목록 + 우측 상세보기)의 정적 HTML 뷰어를 생성합니다.
+    posts_for_js는 이미 JSON 직렬화 가능한 dict 리스트여야 합니다."""
+    posts_json = json.dumps(posts_for_js, ensure_ascii=False)
     return f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>온라인팀 통합관리시스템 백업</title>
+<title>{page_title}</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<h1>🌐 온라인팀 통합관리시스템 백업</h1>
-<p class="meta">생성 시각: {kst_now().strftime('%Y-%m-%d %H:%M')} (KST)</p>
-
-<h2>🗓️ 일정</h2>
-<table><thead><tr><th>제목</th><th>기간</th><th>담당자</th><th>구분</th></tr></thead>
-<tbody>{schedule_rows}</tbody></table>
-
-<h2>📝 온라인팀(행사) 게시글</h2>
-<table><thead><tr><th>상태</th><th>제목</th><th>작성자</th><th>등록일시</th><th>내용</th></tr></thead>
-<tbody>{event_rows}</tbody></table>
-
-<h2>⚙️ 온라인팀(관리) 게시글</h2>
-<table><thead><tr><th>상태</th><th>제목</th><th>작성자</th><th>등록일시</th><th>내용</th></tr></thead>
-<tbody>{admin_rows}</tbody></table>
-
-<h2>🖼️ 이미지 (images/)</h2>
-<ul class="file-list">{image_items}</ul>
-
-<h2>📎 첨부파일 (attach_files/)</h2>
-<ul class="file-list">{file_items}</ul>
-
+<div class="board-wrap">
+  <div class="board-sidebar">
+    <div class="board-logo">🌐 {page_title}</div>
+    <input id="searchBox" class="search-box" type="text" placeholder="제목, 이름, 날짜 검색">
+    <div id="postList" class="post-list"></div>
+  </div>
+  <div class="board-main" id="postDetail">
+    <p class="empty-state">왼쪽에서 게시글을 선택해주세요.</p>
+  </div>
+</div>
 <script src="scripts/script.js"></script>
+<script>
+const POSTS = {posts_json};
+renderBoard(POSTS);
+</script>
 </body>
 </html>"""
 
 
-def generate_backup_package(data):
-    """attach_files / css / data / images / scripts 폴더 + index.html 구조의
-    백업 패키지를 zip 바이트로 생성합니다."""
+def _board_css():
+    return """
+body{font-family:'Malgun Gothic',sans-serif;margin:0;color:#222;background:#f4f5f7;}
+.board-wrap{display:flex;height:100vh;}
+.board-sidebar{width:320px;flex-shrink:0;background:#fff;border-right:1px solid #e2e2e2;
+  overflow-y:auto;display:flex;flex-direction:column;}
+.board-logo{font-size:20px;font-weight:700;color:#1f6feb;padding:16px;}
+.search-box{margin:0 16px 8px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;}
+.post-list{flex:1;overflow-y:auto;}
+.post-item{padding:12px 16px;border-bottom:1px solid #f0f0f0;cursor:pointer;}
+.post-item:hover{background:#f7f9fc;}
+.post-item.active{background:#eef4ff;border-left:3px solid #1f6feb;}
+.post-item .p-title{font-size:14px;font-weight:600;color:#222;margin-bottom:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.post-item .p-meta{font-size:12px;color:#888;}
+.board-main{flex:1;overflow-y:auto;padding:32px 48px;background:#fff;}
+.empty-state{color:#999;}
+.post-title{font-size:22px;font-weight:700;margin-bottom:8px;}
+.post-meta{font-size:13px;color:#777;margin-bottom:16px;border-bottom:1px solid #eee;padding-bottom:12px;}
+.post-meta b{color:#333;}
+.status-badge{display:inline-block;background:#eef4ff;color:#1f6feb;border-radius:10px;
+  padding:2px 10px;font-size:12px;margin-left:6px;}
+.attachments{margin:16px 0;}
+.att-img{display:inline-block;margin:0 10px 10px 0;text-align:center;vertical-align:top;}
+.att-img img{max-width:220px;max-height:220px;border:1px solid #ddd;border-radius:4px;display:block;}
+.att-img .att-name{font-size:11px;color:#888;margin-top:4px;max-width:220px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.att-file a{display:inline-block;margin:0 10px 8px 0;padding:6px 12px;background:#f5f5f5;
+  border-radius:6px;font-size:13px;color:#333;text-decoration:none;}
+.post-content{font-size:14.5px;line-height:1.7;margin:16px 0;}
+.post-content table{border-collapse:collapse;width:100%;}
+.post-content td,.post-content th{border:1px solid #ddd;padding:6px 10px;}
+.comments-section{margin-top:24px;border-top:1px solid #eee;padding-top:16px;}
+.comments-section h3{font-size:15px;margin-bottom:10px;}
+.comment{padding:8px 0;border-bottom:1px solid #f4f4f4;font-size:13.5px;}
+.comment b{color:#1f6feb;}
+.c-time{color:#aaa;font-size:11.5px;margin-left:6px;}
+.c-text{margin-top:4px;}
+.no-comment{color:#999;font-size:13px;}
+"""
+
+
+def _board_js():
+    return """
+let currentPosts = [];
+
+function renderBoard(posts) {
+  currentPosts = posts;
+  renderPostList(posts);
+  if (posts.length > 0) showPost(posts[0].id);
+
+  document.getElementById('searchBox').addEventListener('input', function(e) {
+    const q = e.target.value.toLowerCase();
+    const filtered = posts.filter(p =>
+      p.title.toLowerCase().includes(q) ||
+      p.author.toLowerCase().includes(q) ||
+      p.date.toLowerCase().includes(q)
+    );
+    renderPostList(filtered);
+  });
+}
+
+function renderPostList(posts) {
+  const listEl = document.getElementById('postList');
+  listEl.innerHTML = posts.map(p =>
+    `<div class="post-item" data-id="${p.id}" onclick="showPost('${p.id}')">
+       <div class="p-title">${escapeHtml(p.title)}</div>
+       <div class="p-meta">${escapeHtml(p.author)} · ${escapeHtml(p.date)}</div>
+     </div>`
+  ).join('');
+}
+
+function showPost(id) {
+  const p = currentPosts.find(x => x.id === id);
+  if (!p) return;
+  document.querySelectorAll('.post-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === id);
+  });
+  const detail = document.getElementById('postDetail');
+  detail.innerHTML = `
+    <div class="post-title">${escapeHtml(p.title)}${p.status ? `<span class="status-badge">${escapeHtml(p.status)}</span>` : ''}</div>
+    <div class="post-meta"><b>${escapeHtml(p.author)}</b> · ${escapeHtml(p.board)} · ${escapeHtml(p.date)}</div>
+    <div class="attachments">${p.attachments_html}</div>
+    <div class="post-content">${p.content}</div>
+    <div class="comments-section">
+      <h3>💬 댓글 ${p.comment_count}개</h3>
+      ${p.comments_html}
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+"""
+
+
+def _prepare_posts_for_board(posts, board_key, image_manifest_by_post, file_manifest_by_post):
+    import html as htmllib
+    result = []
+    for p in posts:
+        atts_html = ""
+        for name, path in image_manifest_by_post.get(p["id"], []):
+            atts_html += f"<div class='att-img'><img src='{path}'><div class='att-name'>{htmllib.escape(name)}</div></div>"
+        for name, path in file_manifest_by_post.get(p["id"], []):
+            atts_html += f"<div class='att-file'><a href='{path}' target='_blank'>📎 {htmllib.escape(name)}</a></div>"
+        comments = p.get("comments", [])
+        comments_html = "".join(
+            f"<div class='comment'><b>{htmllib.escape(c['author'])}</b><span class='c-time'>{htmllib.escape(c['time'])}</span>"
+            f"<div class='c-text'>{htmllib.escape(c['text'])}</div></div>"
+            for c in comments
+        ) or "<div class='no-comment'>댓글이 없습니다.</div>"
+        result.append({
+            "id": p["id"],
+            "title": p["title"],
+            "author": p["author"],
+            "date": p["created_at"],
+            "status": p.get("status", ""),
+            "board": _board_display_name(board_key),
+            "content": p.get("content", "") or "",
+            "attachments_html": atts_html,
+            "comments_html": comments_html,
+            "comment_count": len(comments),
+        })
+    result.sort(key=lambda x: x["date"], reverse=True)
+    return result
+
+
+def _extract_attachments(zf, posts):
+    """게시글들의 첨부파일/이미지를 zip에 기록하고, 게시글 id별 매니페스트를 반환합니다."""
+    image_manifest_by_post, file_manifest_by_post = {}, {}
+    img_counter, file_counter = 1, 1
+    for p in posts:
+        for att in p.get("files", []) + p.get("images", []):
+            try:
+                raw = base64.b64decode(att["data"])
+            except Exception:
+                continue
+            if att.get("type", "").startswith("image/"):
+                rel_path = f"images/{img_counter:03d}_{att['name']}"
+                zf.writestr(rel_path, raw)
+                image_manifest_by_post.setdefault(p["id"], []).append((att["name"], rel_path))
+                img_counter += 1
+            else:
+                rel_path = f"attach_files/{file_counter:03d}_{att['name']}"
+                zf.writestr(rel_path, raw)
+                file_manifest_by_post.setdefault(p["id"], []).append((att["name"], rel_path))
+                file_counter += 1
+    return image_manifest_by_post, file_manifest_by_post
+
+
+def generate_backup_package(data, scope="all"):
+    """attach_files / css / data / images / scripts 폴더 + index.html(게시판 형태) 구조의
+    백업 패키지를 zip 바이트로 생성합니다.
+    scope: "all"(전체) / "event"(온라인팀 행사) / "admin"(온라인팀 관리)"""
     import zipfile
+
+    if scope == "event":
+        posts_raw = [dict(p, _board="event") for p in data["event_posts"]]
+        page_title = "온라인팀(행사) 백업"
+    elif scope == "admin":
+        posts_raw = [dict(p, _board="admin") for p in data["admin_posts"]]
+        page_title = "온라인팀(관리) 백업"
+    else:
+        posts_raw = (
+            [dict(p, _board="event") for p in data["event_posts"]]
+            + [dict(p, _board="admin") for p in data["admin_posts"]]
+        )
+        page_title = "온라인팀 통합관리시스템 전체 백업"
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("data/backup_data.json", json.dumps(data, ensure_ascii=False, indent=2))
+        if scope == "all":
+            zf.writestr("data/backup_data.json", json.dumps(data, ensure_ascii=False, indent=2))
+            schedule_lines = "\n".join(
+                f"{s['title']} | {s['start']}~{s['end']} | {s['owner']} | {s['category']}"
+                for s in data["schedules"]
+            )
+            zf.writestr("data/schedules.txt", schedule_lines or "등록된 일정이 없습니다.")
+        else:
+            key = "event_posts" if scope == "event" else "admin_posts"
+            zf.writestr(f"data/{scope}_posts.json", json.dumps(data[key], ensure_ascii=False, indent=2))
 
-        image_manifest, file_manifest = [], []
-        img_counter, file_counter = 1, 1
-        for p in data["event_posts"] + data["admin_posts"]:
-            for att in p.get("files", []) + p.get("images", []):
-                try:
-                    raw = base64.b64decode(att["data"])
-                except Exception:
-                    continue
-                if att.get("type", "").startswith("image/"):
-                    rel_path = f"images/{img_counter:03d}_{att['name']}"
-                    zf.writestr(rel_path, raw)
-                    image_manifest.append((p["title"], rel_path))
-                    img_counter += 1
-                else:
-                    rel_path = f"attach_files/{file_counter:03d}_{att['name']}"
-                    zf.writestr(rel_path, raw)
-                    file_manifest.append((p["title"], rel_path))
-                    file_counter += 1
+        image_manifest_by_post, file_manifest_by_post = _extract_attachments(zf, posts_raw)
 
-        zf.writestr(
-            "css/style.css",
-            "body{font-family:'Malgun Gothic',sans-serif;margin:2rem;color:#222;}"
-            "h1{color:#1f6feb;} h2{margin-top:2rem;border-bottom:2px solid #eee;padding-bottom:4px;}"
-            ".meta{color:#888;font-size:13px;}"
-            "table{border-collapse:collapse;width:100%;margin-top:8px;font-size:14px;}"
-            "th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;vertical-align:top;}"
-            "th{background:#f5f5f5;} .file-list{font-size:13px;line-height:1.8;}",
-        )
-        zf.writestr(
-            "scripts/script.js",
-            "// 온라인팀 통합관리시스템 백업 뷰어 스크립트 (현재는 정적 표시만 지원)\n"
-            "console.log('온라인팀 통합관리시스템 백업 - 생성일: " + kst_now().strftime('%Y-%m-%d %H:%M') + "');\n",
-        )
-        zf.writestr("index.html", _build_backup_index_html(data, image_manifest, file_manifest))
+        posts_for_js = []
+        for p in posts_raw:
+            posts_for_js.extend(
+                _prepare_posts_for_board([p], p["_board"], image_manifest_by_post, file_manifest_by_post)
+            )
+        posts_for_js.sort(key=lambda x: x["date"], reverse=True)
+
+        zf.writestr("css/style.css", _board_css())
+        zf.writestr("scripts/script.js", _board_js())
+        zf.writestr("index.html", _build_board_html(page_title, posts_for_js))
 
     return buffer.getvalue()
 
 
-def save_backup_file(data):
+def save_backup_file(data, scope="all"):
     os.makedirs(BACKUP_DIR, exist_ok=True)
-    fname = f"backup_{kst_now().strftime('%Y%m%d_%H%M')}.zip"
+    suffix = {"all": "전체", "event": "행사", "admin": "관리"}.get(scope, scope)
+    fname = f"backup_{suffix}_{kst_now().strftime('%Y%m%d_%H%M')}.zip"
     path = os.path.join(BACKUP_DIR, fname)
     with open(path, "wb") as f:
-        f.write(generate_backup_package(data))
+        f.write(generate_backup_package(data, scope=scope))
     return path
 
 
@@ -1042,7 +1212,10 @@ if page == "대시보드":
     with ac1:
         dash_metric(
             "📝 등록",
-            len([p for p in data["admin_posts"] if p.get("status", "등록") not in ("공지", "완료")]),
+            len([
+                p for p in data["admin_posts"]
+                if p.get("status", "등록") not in ("공지", "완료") and not vote_started(p)
+            ]),
             "온라인팀(관리)", admin_view_filter="전체", admin_quick_filter="진행중",
         )
     with ac2:
@@ -1078,17 +1251,26 @@ if page == "대시보드":
     left_col, _ = st.columns([1, 3])
     with left_col:
         st.markdown("##### 💾 백업")
-        st.caption("attach_files / css / data / images / scripts 폴더 + index.html 구성의 zip으로 생성됩니다.")
+        st.caption(
+            "게시판 형태(좌측 글 목록 + 상세보기)의 index.html이 포함된 zip으로 생성됩니다. "
+            "전체 또는 게시판별로 따로 받을 수 있습니다."
+        )
+        backup_scope = st.selectbox(
+            "백업 범위", ["전체", "온라인팀(행사)", "온라인팀(관리)"], key="backup_scope_select",
+        )
+        scope_map = {"전체": "all", "온라인팀(행사)": "event", "온라인팀(관리)": "admin"}
+        selected_scope = scope_map[backup_scope]
+
         if st.button("지금 백업하기", key="manual_backup_btn"):
-            path = save_backup_file(data)
+            path = save_backup_file(data, scope=selected_scope)
             data["last_backup_path"] = path
             persist()
-            st.success("백업이 생성되었습니다.")
+            st.success(f"'{backup_scope}' 백업이 생성되었습니다.")
         last_path = data.get("last_backup_path")
         if last_path and os.path.exists(last_path):
             with open(last_path, "rb") as f:
                 st.download_button(
-                    "⬇️ 백업파일 다운받기", data=f.read(),
+                    "⬇️ 최근 백업파일 다운받기", data=f.read(),
                     file_name=os.path.basename(last_path), mime="application/zip",
                     key="download_backup_btn",
                 )
@@ -1396,6 +1578,7 @@ elif page == "온라인팀(행사)":
                 st.markdown("#### ➕ 새 행사 게시글 작성 (상태: 💡 제안)")
                 e_title = st.text_input("제목", key="new_event_title")
                 e_content = rich_text_input("내용", key="new_event_content")
+                e_table_html = table_paste_input("new_event")
                 e_files = st.file_uploader(
                     "첨부파일 (이미지 포함, 드래그앤드롭 지원)", accept_multiple_files=True, key="new_event_files"
                 )
@@ -1403,10 +1586,11 @@ elif page == "온라인팀(행사)":
                     if not e_title.strip():
                         st.warning("제목을 입력해주세요.")
                     else:
+                        final_content = (e_content or "") + e_table_html
                         data["event_posts"].append(
                             {
                                 "id": new_id(), "title": e_title.strip(), "status": "제안",
-                                "content": e_content, "images": [],
+                                "content": final_content, "images": [],
                                 "files": [file_to_b64(f_) for f_ in (e_files or [])],
                                 "author": current_user, "created_at": now_str(), "comments": [],
                             }
@@ -1489,6 +1673,7 @@ elif page == "온라인팀(행사)":
             if p["author"] == current_user and st.session_state.get(f"editing_event_{p['id']}"):
                 new_title = st.text_input("제목 수정", value=p["title"], key=f"et_{p['id']}")
                 new_content = rich_text_input("내용 수정", value=p["content"], key=f"ec_{p['id']}")
+                new_table_html = table_paste_input(f"ec_{p['id']}")
                 st.write("기존 첨부파일 (삭제할 항목 체크)")
                 keep_flags = []
                 for idx, att in enumerate(existing_atts):
@@ -1502,7 +1687,7 @@ elif page == "온라인팀(행사)":
                     added = [file_to_b64(f_) for f_ in (add_files or [])]
                     add_change_log(data, current_user, "수정", "게시글", new_title.strip() or p["title"], "event")
                     p["title"] = new_title.strip() or p["title"]
-                    p["content"] = new_content
+                    p["content"] = (new_content or "") + new_table_html
                     p["files"] = kept + added
                     p["images"] = []
                     persist()
@@ -1546,6 +1731,7 @@ elif page == "온라인팀(관리)":
                     format_func=lambda s: f"{STATUS_ICONS.get(s, '')} {s}",
                 )
                 a_content = rich_text_input("내용", key="new_admin_content")
+                a_table_html = table_paste_input("new_admin")
                 a_files = st.file_uploader(
                     "첨부파일 (이미지 포함, 드래그앤드롭 지원)", accept_multiple_files=True, key="new_admin_files"
                 )
@@ -1609,7 +1795,7 @@ elif page == "온라인팀(관리)":
                                 "options": [{"text": o, "voters": []} for o in opts],
                             }
                         new_post = {
-                            "id": new_id(), "title": a_title.strip(), "content": a_content,
+                            "id": new_id(), "title": a_title.strip(), "content": (a_content or "") + a_table_html,
                             "status": a_status, "author": current_user, "created_at": now_str(),
                             "comments": [], "images": [],
                             "files": [file_to_b64(f_) for f_ in (a_files or [])],
@@ -1632,7 +1818,10 @@ elif page == "온라인팀(관리)":
     if view_filter != "전체":
         posts = [p for p in posts if p.get("status", "등록") == view_filter]
     if quick_filter == "진행중":
-        posts = [p for p in posts if p.get("status", "등록") not in ("공지", "완료")]
+        posts = [
+            p for p in posts
+            if p.get("status", "등록") not in ("공지", "완료") and not vote_started(p)
+        ]
     elif quick_filter == "투표 진행중":
         posts = [p for p in posts if vote_started(p) and not vote_all_voted(p, data)]
     elif quick_filter == "완료처리필요":
@@ -1700,6 +1889,7 @@ elif page == "온라인팀(관리)":
             if p["author"] == current_user and st.session_state.get(f"admin_editing_{p['id']}"):
                 new_title = st.text_input("제목 수정", value=p["title"], key=f"at_{p['id']}")
                 new_content = rich_text_input("내용 수정", value=p.get("content", ""), key=f"ac_{p['id']}")
+                new_table_html = table_paste_input(f"ac_{p['id']}")
 
                 st.write("기존 첨부파일 (삭제할 항목 체크)")
                 keep_flags = []
@@ -1727,7 +1917,7 @@ elif page == "온라인팀(관리)":
                     added = [file_to_b64(f_) for f_ in (add_files or [])]
                     add_change_log(data, current_user, "수정", "게시글", new_title.strip() or p["title"], "admin")
                     p["title"] = new_title.strip() or p["title"]
-                    p["content"] = new_content
+                    p["content"] = (new_content or "") + new_table_html
                     p["files"] = kept + added
                     p["images"] = []
                     if p.get("vote") and new_vote_options_text is not None:
