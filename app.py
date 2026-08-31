@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.10"
+APP_VERSION = "v7.11"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -360,23 +360,110 @@ def tsv_to_html_table(tsv_text):
     return "<table class='pasted-excel-table'>" + "".join(html_rows) + "</table>"
 
 
+_KOREAN_FONT_CANDIDATES = [
+    # Linux (Noto CJK)
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    # Windows (맑은 고딕)
+    "C:/Windows/Fonts/malgun.ttf",
+    "C:/Windows/Fonts/malgunbd.ttf",
+    # macOS
+    "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+]
+
+
+def find_korean_font():
+    """이 서버에서 실제로 찾을 수 있는 한글 지원 폰트 경로를 반환합니다 (없으면 None)."""
+    for path in _KOREAN_FONT_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def render_table_as_image_b64(tsv_text, font_path):
+    """탭 구분 텍스트를 표 모양의 PNG 이미지로 그려 base64 문자열로 반환합니다."""
+    from PIL import ImageDraw, ImageFont
+
+    rows = [r.split("\t") for r in tsv_text.split("\n") if r.strip() != ""]
+    if not rows:
+        return None
+
+    font_size = 16
+    font = ImageFont.truetype(font_path, font_size)
+    pad_x, pad_y = 14, 10
+    n_cols = max(len(r) for r in rows)
+    rows = [r + [""] * (n_cols - len(r)) for r in rows]
+
+    tmp_img = Image.new("RGB", (10, 10))
+    tmp_draw = ImageDraw.Draw(tmp_img)
+    col_widths = [0] * n_cols
+    row_height = 0
+    for row in rows:
+        for ci, cell in enumerate(row):
+            bbox = tmp_draw.textbbox((0, 0), cell, font=font)
+            col_widths[ci] = max(col_widths[ci], (bbox[2] - bbox[0]) + pad_x * 2)
+            row_height = max(row_height, (bbox[3] - bbox[1]) + pad_y * 2)
+
+    total_w = sum(col_widths) + 1
+    total_h = row_height * len(rows) + 1
+    img = Image.new("RGB", (total_w, total_h), "white")
+    draw = ImageDraw.Draw(img)
+
+    y = 0
+    for ri, row in enumerate(rows):
+        x = 0
+        is_header = ri == 0
+        for ci, cell in enumerate(row):
+            w = col_widths[ci]
+            if is_header:
+                draw.rectangle([x, y, x + w, y + row_height], fill="#f0f0f0")
+            draw.rectangle([x, y, x + w, y + row_height], outline="#cccccc")
+            draw.text((x + pad_x, y + pad_y), cell, fill="#222222", font=font)
+            x += w
+        y += row_height
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
 def table_paste_input(key):
     """엑셀/스프레드시트에서 복사한 표를 그대로 붙여넣을 수 있는 보조 입력창.
     (서식 편집기 자체는 표 구조를 이해하지 못해 접힌 칸 없이 바로 보이도록 배치합니다.)
-    반환값은 변환된 HTML 표 문자열(붙여넣은 내용이 없으면 빈 문자열)입니다."""
+    반환값은 변환된 HTML 문자열(붙여넣은 내용이 없으면 빈 문자열)입니다."""
     st.markdown(
         "<div style='font-size:12.5px;color:#666;margin-top:-4px'>"
-        "📋 엑셀에서 표를 복사(Ctrl+C)한 뒤 아래에 붙여넣으면(Ctrl+V) 표 형태 그대로 "
-        "게시글 맨 아래에 삽입됩니다. (서식 편집기 위쪽에는 직접 붙여넣기가 되지 않아 "
-        "이 칸을 함께 씁니다)</div>",
+        "📋 엑셀에서 표를 복사(Ctrl+C)한 뒤 아래에 붙여넣으면(Ctrl+V) 게시글 맨 아래에 "
+        "삽입됩니다. (서식 편집기 위쪽에는 직접 붙여넣기가 되지 않아 이 칸을 함께 씁니다)</div>",
         unsafe_allow_html=True,
     )
     pasted = st.text_area(
         "엑셀/표 붙여넣기", key=f"{key}_paste", height=80, label_visibility="collapsed",
         placeholder="여기에 엑셀 표를 붙여넣으세요 (Ctrl+V)",
     )
-    if pasted.strip():
-        st.caption("미리보기")
+    as_image = st.checkbox("🖼️ 이미지로 변환해서 삽입 (미체크 시 표 형태로 삽입)", key=f"{key}_as_image")
+
+    if not pasted.strip():
+        return ""
+
+    if as_image:
+        font_path = find_korean_font()
+        if font_path is None:
+            st.warning(
+                "이 서버에서 한글을 지원하는 폰트를 찾지 못해 이미지로 변환할 수 없습니다. "
+                "표(HTML) 형태로 대신 삽입됩니다."
+            )
+            st.caption("미리보기 (표)")
+            st.markdown(tsv_to_html_table(pasted), unsafe_allow_html=True)
+            return tsv_to_html_table(pasted)
+        img_b64 = render_table_as_image_b64(pasted, font_path)
+        st.caption("미리보기 (이미지)")
+        st.image(base64.b64decode(img_b64))
+        return f"<img src='data:image/png;base64,{img_b64}' alt='붙여넣은 표'>"
+    else:
+        st.caption("미리보기 (표)")
         st.markdown(tsv_to_html_table(pasted), unsafe_allow_html=True)
     return tsv_to_html_table(pasted) if pasted.strip() else ""
 
