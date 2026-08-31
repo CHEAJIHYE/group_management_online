@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.5"
+APP_VERSION = "v7.7"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -734,6 +734,11 @@ def render_week_block(
             li = lane_assignment.get(s["id"])
             if li is not None and li < total_lanes:
                 lanes[li].append((col_start, col_end, s))
+        # 전역 레인 수를 그대로 쓰면 이번 주에 실제로 쓰이지 않는 레인까지
+        # "숨겨진 레인"으로 잘못 계산되므로, 이번 주에 실제 내용이 있는
+        # 마지막 레인까지만 유효 레인 수로 취급합니다.
+        active_indices = [i for i, items in enumerate(lanes) if items]
+        effective_lane_count = (max(active_indices) + 1) if active_indices else 0
     else:
         # 겹치지 않는 일정끼리 같은 줄(레인)에 묶기 (이 주만 기준으로 계산)
         lanes = []
@@ -747,12 +752,16 @@ def render_week_block(
                 lanes.append([])
                 lane_idx = len(lanes) - 1
             lanes[lane_idx].append((col_start, col_end, s))
+        effective_lane_count = len(lanes)
 
     MAX_VISIBLE_LANES = 5
     show_all_key = f"{week_key}_showall"
     show_all = st.session_state.get(show_all_key, False)
-    visible_lane_indices = list(range(len(lanes))) if show_all else list(range(min(len(lanes), MAX_VISIBLE_LANES)))
-    hidden_count = max(0, len(lanes) - MAX_VISIBLE_LANES)
+    visible_lane_indices = (
+        list(range(effective_lane_count)) if show_all
+        else list(range(min(effective_lane_count, MAX_VISIBLE_LANES)))
+    )
+    hidden_count = max(0, effective_lane_count - MAX_VISIBLE_LANES)
 
     wrap_key = f"{week_key}_wrap"
     st.markdown(
@@ -764,25 +773,32 @@ def render_week_block(
     )
 
     with st.container(key=wrap_key):
-        # 날짜 숫자 버튼 줄 (7등분 - 항상 정확히 요일과 매칭됨)
+        # 날짜 숫자 버튼 줄 (7등분 - 항상 정확히 요일과 매칭됨) - 셀을 좀 더 크게
         day_cols = st.columns(7)
         for i, d_ in enumerate(week_dates):
+            day_cell_key = f"{week_key}_daycell_{i}"
+            st.markdown(
+                f"<style>.st-key-{day_cell_key} button {{font-size:15px !important;"
+                "padding:6px 10px !important;min-height:38px !important;}}</style>",
+                unsafe_allow_html=True,
+            )
             with day_cols[i]:
-                if current_month is None or d_.month == current_month:
-                    if st.button(str(d_.day), key=f"day_{week_key}_{d_.isoformat()}"):
-                        open_new_schedule_dialog(d_)
-                        st.rerun()
-                else:
-                    st.markdown(
-                        f"<div style='color:#ccc;font-size:12px;text-align:center'>{d_.day}</div>",
-                        unsafe_allow_html=True,
-                    )
+                with st.container(key=day_cell_key):
+                    if current_month is None or d_.month == current_month:
+                        if st.button(str(d_.day), key=f"day_{week_key}_{d_.isoformat()}"):
+                            open_new_schedule_dialog(d_)
+                            st.rerun()
+                    else:
+                        st.markdown(
+                            f"<div style='color:#ccc;font-size:14px;text-align:center;padding:6px 0'>{d_.day}</div>",
+                            unsafe_allow_html=True,
+                        )
 
         # 각 레인을 (여백/일정/여백 ...) 비율의 st.columns로 렌더링 -> 항상 정확한 날짜 위치
         for lane_idx in visible_lane_indices:
             items = lanes[lane_idx]
             if not items:
-                st.columns(7)  # 이 주에 해당 레인이 비어있어도 자리(줄 위치)는 유지
+                st.markdown("<div style='height:38px'></div>", unsafe_allow_html=True)  # 빈 레인도 자리(줄 위치) 유지
                 continue
             items = sorted(items, key=lambda x: x[0])
             segments = []  # (kind, width, schedule|None)
@@ -805,8 +821,8 @@ def render_week_block(
                 cell_key = f"{week_key}_ev_{s['id']}"
                 st.markdown(
                     f"<style>.st-key-{cell_key} button {{background:{color} !important;"
-                    "color:#333 !important;border:none !important;font-size:12.5px !important;"
-                    "padding:2px 8px !important;white-space:nowrap;overflow:hidden;"
+                    "color:#333 !important;border:none !important;font-size:14px !important;"
+                    "padding:8px 12px !important;min-height:38px !important;white-space:nowrap;overflow:hidden;"
                     "text-overflow:ellipsis;text-align:left !important;justify-content:flex-start !important;}"
                     f".st-key-{cell_key} button:hover {{filter:brightness(0.92);}}</style>",
                     unsafe_allow_html=True,
@@ -817,26 +833,19 @@ def render_week_block(
                             open_view_schedule_dialog(s["id"])
                             st.rerun()
 
-        if (hidden_count > 0 and not show_all) or (show_all and hidden_count > 0):
-            # 요일별로 실제 겹치는 일정 수를 계산해, 초과가 발생하는 그 날짜 칸에만
-            # "더보기" 버튼을 배치합니다 (전체 폭 버튼 대신 정확한 위치에 표시).
-            day_overlap_count = [0] * 7
-            for col_start, col_end, s in week_events:
-                for d_idx in range(col_start, col_end + 1):
-                    day_overlap_count[d_idx] += 1
-
-            more_cols = st.columns(7)
-            for d_idx in range(7):
-                with more_cols[d_idx]:
-                    if not show_all and day_overlap_count[d_idx] > MAX_VISIBLE_LANES:
-                        extra = day_overlap_count[d_idx] - MAX_VISIBLE_LANES
-                        if st.button(f"+{extra}개", key=f"{week_key}_more_btn_{d_idx}", width="stretch"):
-                            st.session_state[show_all_key] = True
-                            st.rerun()
-                    elif show_all and day_overlap_count[d_idx] > MAX_VISIBLE_LANES:
-                        if st.button("접기", key=f"{week_key}_less_btn_{d_idx}", width="stretch"):
-                            st.session_state[show_all_key] = False
-                            st.rerun()
+        if hidden_count > 0:
+            # 요일별 개별 더보기 버튼 대신, 주 오른쪽에 버튼 하나만 두고
+            # 누르면 그 주 전체를 한 번에 펼칩니다.
+            spacer_col, more_col = st.columns([7, 1])
+            with more_col:
+                if not show_all:
+                    if st.button(f"+{hidden_count}개", key=f"{week_key}_more_btn", width="stretch"):
+                        st.session_state[show_all_key] = True
+                        st.rerun()
+                else:
+                    if st.button("접기", key=f"{week_key}_less_btn", width="stretch"):
+                        st.session_state[show_all_key] = False
+                        st.rerun()
 
         if not lanes:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
