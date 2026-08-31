@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.8"
+APP_VERSION = "v7.10"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -362,19 +362,23 @@ def tsv_to_html_table(tsv_text):
 
 def table_paste_input(key):
     """엑셀/스프레드시트에서 복사한 표를 그대로 붙여넣을 수 있는 보조 입력창.
+    (서식 편집기 자체는 표 구조를 이해하지 못해 접힌 칸 없이 바로 보이도록 배치합니다.)
     반환값은 변환된 HTML 표 문자열(붙여넣은 내용이 없으면 빈 문자열)입니다."""
-    with st.expander("📋 엑셀/표 데이터 붙여넣기 (서식 그대로 유지)"):
-        st.caption(
-            "엑셀에서 표를 복사(Ctrl+C)한 뒤 아래 칸에 붙여넣으면(Ctrl+V), "
-            "표 형태 그대로 게시글 맨 아래에 삽입됩니다."
-        )
-        pasted = st.text_area(
-            "여기에 붙여넣기", key=f"{key}_paste", height=100, label_visibility="collapsed",
-        )
-        if pasted.strip():
-            st.caption("미리보기")
-            st.markdown(tsv_to_html_table(pasted), unsafe_allow_html=True)
-        return tsv_to_html_table(pasted) if pasted.strip() else ""
+    st.markdown(
+        "<div style='font-size:12.5px;color:#666;margin-top:-4px'>"
+        "📋 엑셀에서 표를 복사(Ctrl+C)한 뒤 아래에 붙여넣으면(Ctrl+V) 표 형태 그대로 "
+        "게시글 맨 아래에 삽입됩니다. (서식 편집기 위쪽에는 직접 붙여넣기가 되지 않아 "
+        "이 칸을 함께 씁니다)</div>",
+        unsafe_allow_html=True,
+    )
+    pasted = st.text_area(
+        "엑셀/표 붙여넣기", key=f"{key}_paste", height=80, label_visibility="collapsed",
+        placeholder="여기에 엑셀 표를 붙여넣으세요 (Ctrl+V)",
+    )
+    if pasted.strip():
+        st.caption("미리보기")
+        st.markdown(tsv_to_html_table(pasted), unsafe_allow_html=True)
+    return tsv_to_html_table(pasted) if pasted.strip() else ""
 
 
 def extract_mentions(text, data):
@@ -789,7 +793,7 @@ def render_week_block(
             day_cell_key = f"{week_key}_daycell_{i}"
             st.markdown(
                 f"<style>.st-key-{day_cell_key} button {{font-size:10px !important;"
-                "padding:2px 8px !important;min-height:20px !important;}}</style>",
+                "padding:0px 4px !important;min-height:15px !important;}}</style>",
                 unsafe_allow_html=True,
             )
             with day_cols[i]:
@@ -808,7 +812,7 @@ def render_week_block(
         for lane_idx in visible_lane_indices:
             items = lanes[lane_idx]
             if not items:
-                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)  # 빈 레인도 자리(줄 위치) 유지
+                st.markdown("<div style='height:15px'></div>", unsafe_allow_html=True)  # 빈 레인도 자리(줄 위치) 유지
                 continue
             items = sorted(items, key=lambda x: x[0])
             segments = []  # (kind, width, schedule|None)
@@ -832,7 +836,7 @@ def render_week_block(
                 st.markdown(
                     f"<style>.st-key-{cell_key} button {{background:{color} !important;"
                     "color:#333 !important;border:none !important;font-size:10px !important;"
-                    "padding:2px 8px !important;min-height:20px !important;white-space:nowrap;overflow:hidden;"
+                    "padding:0px 6px !important;min-height:15px !important;white-space:nowrap;overflow:hidden;"
                     "text-overflow:ellipsis;text-align:left !important;justify-content:flex-start !important;}"
                     f".st-key-{cell_key} button:hover {{filter:brightness(0.92);}}</style>",
                     unsafe_allow_html=True,
