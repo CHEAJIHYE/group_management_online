@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.7"
+APP_VERSION = "v7.8"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -757,11 +757,21 @@ def render_week_block(
     MAX_VISIBLE_LANES = 5
     show_all_key = f"{week_key}_showall"
     show_all = st.session_state.get(show_all_key, False)
-    visible_lane_indices = (
-        list(range(effective_lane_count)) if show_all
-        else list(range(min(effective_lane_count, MAX_VISIBLE_LANES)))
-    )
-    hidden_count = max(0, effective_lane_count - MAX_VISIBLE_LANES)
+
+    # "더보기"가 실제로 필요한지는 이 주 안에서 하루라도 실제로 겹치는 일정 수가
+    # MAX_VISIBLE_LANES를 넘는지로 판단합니다 (전역 레인 번호가 높다고 해서
+    # 실제 겹침이 없는데도 더보기가 뜨는 것을 방지).
+    day_overlap_count = [0] * 7
+    for col_start, col_end, s in week_events:
+        for d_idx in range(col_start, col_end + 1):
+            day_overlap_count[d_idx] += 1
+    needs_hiding = (max(day_overlap_count) if week_events else 0) > MAX_VISIBLE_LANES
+
+    if needs_hiding and not show_all:
+        visible_lane_indices = list(range(min(effective_lane_count, MAX_VISIBLE_LANES)))
+    else:
+        visible_lane_indices = list(range(effective_lane_count))
+    hidden_count = max(0, effective_lane_count - MAX_VISIBLE_LANES) if needs_hiding else 0
 
     wrap_key = f"{week_key}_wrap"
     st.markdown(
@@ -773,13 +783,13 @@ def render_week_block(
     )
 
     with st.container(key=wrap_key):
-        # 날짜 숫자 버튼 줄 (7등분 - 항상 정확히 요일과 매칭됨) - 셀을 좀 더 크게
+        # 날짜 숫자 버튼 줄 (7등분 - 항상 정확히 요일과 매칭됨)
         day_cols = st.columns(7)
         for i, d_ in enumerate(week_dates):
             day_cell_key = f"{week_key}_daycell_{i}"
             st.markdown(
-                f"<style>.st-key-{day_cell_key} button {{font-size:15px !important;"
-                "padding:6px 10px !important;min-height:38px !important;}}</style>",
+                f"<style>.st-key-{day_cell_key} button {{font-size:10px !important;"
+                "padding:2px 8px !important;min-height:20px !important;}}</style>",
                 unsafe_allow_html=True,
             )
             with day_cols[i]:
@@ -790,7 +800,7 @@ def render_week_block(
                             st.rerun()
                     else:
                         st.markdown(
-                            f"<div style='color:#ccc;font-size:14px;text-align:center;padding:6px 0'>{d_.day}</div>",
+                            f"<div style='color:#ccc;font-size:10px;text-align:center'>{d_.day}</div>",
                             unsafe_allow_html=True,
                         )
 
@@ -798,7 +808,7 @@ def render_week_block(
         for lane_idx in visible_lane_indices:
             items = lanes[lane_idx]
             if not items:
-                st.markdown("<div style='height:38px'></div>", unsafe_allow_html=True)  # 빈 레인도 자리(줄 위치) 유지
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)  # 빈 레인도 자리(줄 위치) 유지
                 continue
             items = sorted(items, key=lambda x: x[0])
             segments = []  # (kind, width, schedule|None)
@@ -821,8 +831,8 @@ def render_week_block(
                 cell_key = f"{week_key}_ev_{s['id']}"
                 st.markdown(
                     f"<style>.st-key-{cell_key} button {{background:{color} !important;"
-                    "color:#333 !important;border:none !important;font-size:14px !important;"
-                    "padding:8px 12px !important;min-height:38px !important;white-space:nowrap;overflow:hidden;"
+                    "color:#333 !important;border:none !important;font-size:10px !important;"
+                    "padding:2px 8px !important;min-height:20px !important;white-space:nowrap;overflow:hidden;"
                     "text-overflow:ellipsis;text-align:left !important;justify-content:flex-start !important;}"
                     f".st-key-{cell_key} button:hover {{filter:brightness(0.92);}}</style>",
                     unsafe_allow_html=True,
