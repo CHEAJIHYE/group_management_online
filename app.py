@@ -19,12 +19,18 @@ import calendar as cal
 from datetime import date, datetime, timedelta, timezone
 from PIL import Image
 
+try:
+    from streamlit_quill import st_quill
+    QUILL_AVAILABLE = True
+except ImportError:
+    QUILL_AVAILABLE = False
+
 # --------------------------------------------------------------------------
 # 기본 설정
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v6"
+APP_VERSION = "v7"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -256,6 +262,16 @@ def vote_all_voted(post, data):
     return members.issubset(voted)
 
 
+def vote_started(post):
+    """투표 기능이 있는 게시글에 구성원이 한 명이라도 투표했는지 여부."""
+    if not post.get("vote"):
+        return False
+    for o in post["vote"]["options"]:
+        if o["voters"]:
+            return True
+    return False
+
+
 def file_to_b64(uploaded_file):
     if uploaded_file is None:
         return None
@@ -299,6 +315,29 @@ def render_content(text):
         st.markdown(text.replace("\n", "  \n"))
 
 
+QUILL_TOOLBAR = [
+    [{"font": []}, {"size": ["small", False, "large", "huge"]}],
+    ["bold", "italic", "underline", "strike"],
+    [{"color": []}, {"background": []}],
+    [{"list": "ordered"}, {"list": "bullet"}, {"indent": "-1"}, {"indent": "+1"}],
+    [{"align": []}],
+    ["blockquote", "code-block", "link", "image"],
+    ["formula", "clean"],
+]
+
+
+def rich_text_input(label, value="", key=None, height=160):
+    """가능하면 위지윅(서식) 에디터를, streamlit-quill 미설치 시 일반 텍스트 입력으로 대체합니다."""
+    if QUILL_AVAILABLE:
+        st.caption(label)
+        return st_quill(
+            value=value, html=True, toolbar=QUILL_TOOLBAR,
+            placeholder="내용을 입력하세요...", key=key,
+        )
+    st.caption(f"{label}  ·  서식 편집기를 쓰려면 `pip install streamlit-quill` 후 새로고침 해주세요.")
+    return st.text_area(label, value=value, key=key, height=height, label_visibility="collapsed")
+
+
 def extract_mentions(text, data):
     names = member_names(data)
     found = set()
@@ -336,34 +375,118 @@ def dash_metric(label, count, page_name, **filters):
         go_to(page_name, **filters)
 
 
-def generate_backup_html(data):
-    lines = [
-        "<html><head><meta charset='utf-8'><title>온라인팀 통합관리시스템 백업</title></head><body>",
-        f"<h1>온라인팀 통합관리시스템 백업 - {kst_now().strftime('%Y-%m-%d %H:%M')} (KST)</h1>",
-        "<h2>일정</h2><ul>",
-    ]
-    for s in data["schedules"]:
-        lines.append(f"<li>{s['title']} ({s['start']}~{s['end']}) - {s['owner']} / {s['category']}</li>")
-    lines.append("</ul><h2>온라인팀(행사) 게시글</h2><ul>")
-    for p in data["event_posts"]:
-        lines.append(
-            f"<li>[{p['status']}] {p['title']} - {p['author']} ({p['created_at']})<br>{p.get('content', '')}</li>"
+def _build_backup_index_html(data, image_manifest, file_manifest):
+    schedule_rows = "".join(
+        f"<tr><td>{s['title']}</td><td>{s['start']} ~ {s['end']}</td>"
+        f"<td>{s['owner']}</td><td>{s['category']}</td></tr>"
+        for s in data["schedules"]
+    )
+    event_rows = "".join(
+        f"<tr><td>[{p['status']}]</td><td>{p['title']}</td><td>{p['author']}</td>"
+        f"<td>{p['created_at']}</td><td>{p.get('content', '')}</td></tr>"
+        for p in data["event_posts"]
+    )
+    admin_rows = "".join(
+        f"<tr><td>[{p.get('status', '등록')}]</td><td>{p['title']}</td><td>{p['author']}</td>"
+        f"<td>{p['created_at']}</td><td>{p.get('content', '')}</td></tr>"
+        for p in data["admin_posts"]
+    )
+    image_items = "".join(
+        f"<li>{title} — <a href='{path}' target='_blank'>{path}</a><br>"
+        f"<img src='{path}' style='max-width:300px;border:1px solid #ddd;margin-top:4px'></li>"
+        for title, path in image_manifest
+    ) or "<li>없음</li>"
+    file_items = "".join(
+        f"<li>{title} — <a href='{path}' target='_blank'>{path}</a></li>" for title, path in file_manifest
+    ) or "<li>없음</li>"
+
+    return f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>온라인팀 통합관리시스템 백업</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<h1>🌐 온라인팀 통합관리시스템 백업</h1>
+<p class="meta">생성 시각: {kst_now().strftime('%Y-%m-%d %H:%M')} (KST)</p>
+
+<h2>🗓️ 일정</h2>
+<table><thead><tr><th>제목</th><th>기간</th><th>담당자</th><th>구분</th></tr></thead>
+<tbody>{schedule_rows}</tbody></table>
+
+<h2>📝 온라인팀(행사) 게시글</h2>
+<table><thead><tr><th>상태</th><th>제목</th><th>작성자</th><th>등록일시</th><th>내용</th></tr></thead>
+<tbody>{event_rows}</tbody></table>
+
+<h2>⚙️ 온라인팀(관리) 게시글</h2>
+<table><thead><tr><th>상태</th><th>제목</th><th>작성자</th><th>등록일시</th><th>내용</th></tr></thead>
+<tbody>{admin_rows}</tbody></table>
+
+<h2>🖼️ 이미지 (images/)</h2>
+<ul class="file-list">{image_items}</ul>
+
+<h2>📎 첨부파일 (attach_files/)</h2>
+<ul class="file-list">{file_items}</ul>
+
+<script src="scripts/script.js"></script>
+</body>
+</html>"""
+
+
+def generate_backup_package(data):
+    """attach_files / css / data / images / scripts 폴더 + index.html 구조의
+    백업 패키지를 zip 바이트로 생성합니다."""
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("data/backup_data.json", json.dumps(data, ensure_ascii=False, indent=2))
+
+        image_manifest, file_manifest = [], []
+        img_counter, file_counter = 1, 1
+        for p in data["event_posts"] + data["admin_posts"]:
+            for att in p.get("files", []) + p.get("images", []):
+                try:
+                    raw = base64.b64decode(att["data"])
+                except Exception:
+                    continue
+                if att.get("type", "").startswith("image/"):
+                    rel_path = f"images/{img_counter:03d}_{att['name']}"
+                    zf.writestr(rel_path, raw)
+                    image_manifest.append((p["title"], rel_path))
+                    img_counter += 1
+                else:
+                    rel_path = f"attach_files/{file_counter:03d}_{att['name']}"
+                    zf.writestr(rel_path, raw)
+                    file_manifest.append((p["title"], rel_path))
+                    file_counter += 1
+
+        zf.writestr(
+            "css/style.css",
+            "body{font-family:'Malgun Gothic',sans-serif;margin:2rem;color:#222;}"
+            "h1{color:#1f6feb;} h2{margin-top:2rem;border-bottom:2px solid #eee;padding-bottom:4px;}"
+            ".meta{color:#888;font-size:13px;}"
+            "table{border-collapse:collapse;width:100%;margin-top:8px;font-size:14px;}"
+            "th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;vertical-align:top;}"
+            "th{background:#f5f5f5;} .file-list{font-size:13px;line-height:1.8;}",
         )
-    lines.append("</ul><h2>온라인팀(관리) 게시글</h2><ul>")
-    for p in data["admin_posts"]:
-        lines.append(
-            f"<li>[{p.get('status', '등록')}] {p['title']} - {p['author']} ({p['created_at']})<br>{p.get('content', '')}</li>"
+        zf.writestr(
+            "scripts/script.js",
+            "// 온라인팀 통합관리시스템 백업 뷰어 스크립트 (현재는 정적 표시만 지원)\n"
+            "console.log('온라인팀 통합관리시스템 백업 - 생성일: " + kst_now().strftime('%Y-%m-%d %H:%M') + "');\n",
         )
-    lines.append("</ul></body></html>")
-    return "\n".join(lines)
+        zf.writestr("index.html", _build_backup_index_html(data, image_manifest, file_manifest))
+
+    return buffer.getvalue()
 
 
 def save_backup_file(data):
     os.makedirs(BACKUP_DIR, exist_ok=True)
-    fname = f"backup_{kst_now().strftime('%Y%m%d_%H%M')}.html"
+    fname = f"backup_{kst_now().strftime('%Y%m%d_%H%M')}.zip"
     path = os.path.join(BACKUP_DIR, fname)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(generate_backup_html(data))
+    with open(path, "wb") as f:
+        f.write(generate_backup_package(data))
     return path
 
 
@@ -384,10 +507,46 @@ def maybe_auto_backup(data):
 # --------------------------------------------------------------------------
 # 캘린더 주간 블록 렌더링 (월간/주간 공용) - 색상 블록 클릭 시 상세 팝업
 # --------------------------------------------------------------------------
-def render_week_block(week_dates, visible_schedules, data, week_key, current_month=None):
+def compute_month_lane_assignment(weeks, visible_schedules):
+    """월 전체 기준으로 일정마다 고정된 레인 번호를 계산합니다.
+    (주가 바뀌어도 같은 일정은 항상 같은 줄에 표시되도록)"""
+    grid_start = weeks[0][0]
+    grid_end = weeks[-1][-1]
+    events_abs = []
+    for s in visible_schedules:
+        s_start = date.fromisoformat(s["start"])
+        s_end = date.fromisoformat(s["end"])
+        if s_end < grid_start or s_start > grid_end:
+            continue
+        abs_start = (max(s_start, grid_start) - grid_start).days
+        abs_end = (min(s_end, grid_end) - grid_start).days
+        events_abs.append((abs_start, abs_end, s))
+
+    lanes = []  # list of list of (start,end) intervals already placed
+    assignment = {}
+    for abs_start, abs_end, s in sorted(events_abs, key=lambda x: (x[0], -(x[1] - x[0]))):
+        lane_idx = None
+        for li, intervals in enumerate(lanes):
+            if all(abs_end < a or abs_start > b for a, b in intervals):
+                lane_idx = li
+                break
+        if lane_idx is None:
+            lanes.append([])
+            lane_idx = len(lanes) - 1
+        lanes[lane_idx].append((abs_start, abs_end))
+        assignment[s["id"]] = lane_idx
+    return assignment, len(lanes)
+
+
+def render_week_block(
+    week_dates, visible_schedules, data, week_key, current_month=None,
+    lane_assignment=None, total_lanes=None,
+):
     """월간/주간 캘린더의 한 주를 렌더링합니다.
     날짜 매칭 정확성을 위해 CSS 그리드 클래스 추정 대신 st.columns 비율을
-    직접 계산해 배치합니다 (실제 날짜와 시각적 위치가 항상 정확히 일치)."""
+    직접 계산해 배치합니다 (실제 날짜와 시각적 위치가 항상 정확히 일치).
+    lane_assignment/total_lanes가 주어지면 월 전체 기준 고정 레인 번호를 사용해
+    같은 일정이 주가 바뀌어도 항상 같은 줄에 표시되도록 합니다."""
     week_start, week_end = week_dates[0], week_dates[-1]
     week_events = []
     for s in visible_schedules:
@@ -399,23 +558,30 @@ def render_week_block(week_dates, visible_schedules, data, week_key, current_mon
         col_end = min(6, (min(s_end, week_end) - week_start).days)
         week_events.append((col_start, col_end, s))
 
-    # 겹치지 않는 일정끼리 같은 줄(레인)에 묶기
-    lanes = []
-    for col_start, col_end, s in sorted(week_events, key=lambda x: (x[0], -(x[1] - x[0]))):
-        lane_idx = None
-        for li, items in enumerate(lanes):
-            if all(col_end < a or col_start > b for a, b, _ in items):
-                lane_idx = li
-                break
-        if lane_idx is None:
-            lanes.append([])
-            lane_idx = len(lanes) - 1
-        lanes[lane_idx].append((col_start, col_end, s))
+    if lane_assignment is not None and total_lanes is not None:
+        lanes = [[] for _ in range(total_lanes)]
+        for col_start, col_end, s in week_events:
+            li = lane_assignment.get(s["id"])
+            if li is not None and li < total_lanes:
+                lanes[li].append((col_start, col_end, s))
+    else:
+        # 겹치지 않는 일정끼리 같은 줄(레인)에 묶기 (이 주만 기준으로 계산)
+        lanes = []
+        for col_start, col_end, s in sorted(week_events, key=lambda x: (x[0], -(x[1] - x[0]))):
+            lane_idx = None
+            for li, items in enumerate(lanes):
+                if all(col_end < a or col_start > b for a, b, _ in items):
+                    lane_idx = li
+                    break
+            if lane_idx is None:
+                lanes.append([])
+                lane_idx = len(lanes) - 1
+            lanes[lane_idx].append((col_start, col_end, s))
 
     MAX_VISIBLE_LANES = 5
     show_all_key = f"{week_key}_showall"
     show_all = st.session_state.get(show_all_key, False)
-    visible_lanes = lanes if show_all else lanes[:MAX_VISIBLE_LANES]
+    visible_lane_indices = list(range(len(lanes))) if show_all else list(range(min(len(lanes), MAX_VISIBLE_LANES)))
     hidden_count = max(0, len(lanes) - MAX_VISIBLE_LANES)
 
     wrap_key = f"{week_key}_wrap"
@@ -443,8 +609,12 @@ def render_week_block(week_dates, visible_schedules, data, week_key, current_mon
                     )
 
         # 각 레인을 (여백/일정/여백 ...) 비율의 st.columns로 렌더링 -> 항상 정확한 날짜 위치
-        for items in visible_lanes:
-            items.sort(key=lambda x: x[0])
+        for lane_idx in visible_lane_indices:
+            items = lanes[lane_idx]
+            if not items:
+                st.columns(7)  # 이 주에 해당 레인이 비어있어도 자리(줄 위치)는 유지
+                continue
+            items = sorted(items, key=lambda x: x[0])
             segments = []  # (kind, width, schedule|None)
             cursor = 0
             for col_start, col_end, s in items:
@@ -591,7 +761,10 @@ with st.sidebar:
             st.markdown("##### ⚠️ 확인이 필요한 게시글")
             for p in pending_votes[:6]:
                 if st.button(f"🗳️ {p['title']}", key=f"pending_jump_{p['id']}", width="stretch"):
-                    go_to("온라인팀(관리)", admin_view_filter="전체", admin_quick_filter="없음")
+                    go_to(
+                        "온라인팀(관리)", admin_view_filter="전체", admin_quick_filter="없음",
+                        _highlight_post_id=p["id"],
+                    )
 
         my_notifs = [n for n in data.get("notifications", []) if n["user"] == current_user]
         if my_notifs:
@@ -602,11 +775,18 @@ with st.sidebar:
                     data["notifications"] = [x for x in data["notifications"] if x["id"] != n["id"]]
                     persist()
                     target_page = "온라인팀(행사)" if n["board"] == "event" else "온라인팀(관리)"
-                    go_to(target_page)
+                    highlight_kwargs = {"_highlight_post_id": n["post_id"]}
+                    if target_page == "온라인팀(행사)":
+                        highlight_kwargs["event_filter_status"] = "전체"
+                    else:
+                        highlight_kwargs["admin_view_filter"] = "전체"
+                        highlight_kwargs["admin_quick_filter"] = "없음"
+                    go_to(target_page, **highlight_kwargs)
 
     st.markdown("---")
     st.caption(f"ⓒ {kst_today().year} {COPYRIGHT_OWNER} All Rights Reserved.")
     st.caption(f"배포 버전: {APP_VERSION} RELEASE ({APP_BUILD_DATE})")
+    st.caption("First version distributed by online team CHEA")
 
 if names and current_user is None:
     st.title("🌐 온라인팀 통합관리시스템")
@@ -662,7 +842,7 @@ def schedule_dialog():
         st.write(f"**담당자** : {sched['owner']}  ·  **구분** : {sched['category']}")
         if sched.get("memo"):
             st.write("**메모**")
-            st.info(sched["memo"])
+            st.info(sched["memo"].replace("\n", "  \n"))
         c1, c2, c3 = st.columns([1, 1, 3])
         if c1.button("✏️ 수정", width="stretch"):
             st.session_state[edit_mode_key] = True
@@ -867,9 +1047,9 @@ if page == "대시보드":
         )
     with ac2:
         dash_metric(
-            "✅ 체크완료",
-            len([p for p in data["admin_posts"] if vote_all_voted(p, data) and p.get("status") != "완료"]),
-            "온라인팀(관리)", admin_view_filter="전체", admin_quick_filter="체크완료",
+            "🗳️ 투표 진행중",
+            len([p for p in data["admin_posts"] if vote_started(p) and not vote_all_voted(p, data)]),
+            "온라인팀(관리)", admin_view_filter="전체", admin_quick_filter="투표 진행중",
         )
     with ac3:
         dash_metric(
@@ -898,6 +1078,7 @@ if page == "대시보드":
     left_col, _ = st.columns([1, 3])
     with left_col:
         st.markdown("##### 💾 백업")
+        st.caption("attach_files / css / data / images / scripts 폴더 + index.html 구성의 zip으로 생성됩니다.")
         if st.button("지금 백업하기", key="manual_backup_btn"):
             path = save_backup_file(data)
             data["last_backup_path"] = path
@@ -908,7 +1089,7 @@ if page == "대시보드":
             with open(last_path, "rb") as f:
                 st.download_button(
                     "⬇️ 백업파일 다운받기", data=f.read(),
-                    file_name=os.path.basename(last_path), mime="text/html",
+                    file_name=os.path.basename(last_path), mime="application/zip",
                     key="download_backup_btn",
                 )
         else:
@@ -1034,10 +1215,12 @@ elif page == "일정 관리":
                 unsafe_allow_html=True,
             )
 
+        month_lane_assignment, month_total_lanes = compute_month_lane_assignment(weeks, visible_schedules)
         for week_idx, week in enumerate(weeks):
             render_week_block(
                 week, visible_schedules, data,
                 week_key=f"monthgrid_{year}_{month}_{week_idx}", current_month=month,
+                lane_assignment=month_lane_assignment, total_lanes=month_total_lanes,
             )
 
     with tab2:
@@ -1212,10 +1395,7 @@ elif page == "온라인팀(행사)":
             with st.container(border=True):
                 st.markdown("#### ➕ 새 행사 게시글 작성 (상태: 💡 제안)")
                 e_title = st.text_input("제목", key="new_event_title")
-                e_content = st.text_area(
-                    "내용 (텍스트 입력, 줄바꿈 유지 / HTML 소스 붙여넣기 지원)",
-                    key="new_event_content", height=140,
-                )
+                e_content = rich_text_input("내용", key="new_event_content")
                 e_files = st.file_uploader(
                     "첨부파일 (이미지 포함, 드래그앤드롭 지원)", accept_multiple_files=True, key="new_event_files"
                 )
@@ -1257,10 +1437,22 @@ elif page == "온라인팀(행사)":
             )
         shown = [p for p in shown if _match(p)]
 
+    highlight_id = st.session_state.pop("_highlight_post_id", None)
+    if highlight_id:
+        matched = [p for p in shown if p["id"] == highlight_id]
+        others = [p for p in shown if p["id"] != highlight_id]
+        shown = matched + others
+
     if not shown:
         st.info("표시할 게시글이 없습니다.")
 
     for p in shown:
+        if highlight_id and p["id"] == highlight_id:
+            st.markdown(
+                "<div style='background:#FFF7D6;border-left:4px solid #F5B301;"
+                "padding:4px 10px;border-radius:4px;margin-bottom:-4px;font-size:12.5px'>"
+                "🔎 확인하러 온 게시글</div>", unsafe_allow_html=True,
+            )
         with st.container(border=True):
             status_col, spacer_col, btn_group = st.columns([3, 5, 2])
             with status_col:
@@ -1296,7 +1488,7 @@ elif page == "온라인팀(행사)":
 
             if p["author"] == current_user and st.session_state.get(f"editing_event_{p['id']}"):
                 new_title = st.text_input("제목 수정", value=p["title"], key=f"et_{p['id']}")
-                new_content = st.text_area("내용 수정", value=p["content"], key=f"ec_{p['id']}", height=120)
+                new_content = rich_text_input("내용 수정", value=p["content"], key=f"ec_{p['id']}")
                 st.write("기존 첨부파일 (삭제할 항목 체크)")
                 keep_flags = []
                 for idx, att in enumerate(existing_atts):
@@ -1338,7 +1530,7 @@ elif page == "온라인팀(관리)":
         format_func=lambda s: s if s == "전체" else f"{STATUS_ICONS.get(s, '')} {s}",
     )
     quick_filter = st.selectbox(
-        "빠른 필터", ["없음", "진행중", "체크완료", "완료처리필요"], key="admin_quick_filter"
+        "빠른 필터", ["없음", "진행중", "투표 진행중", "완료처리필요"], key="admin_quick_filter"
     )
 
     if view_filter == "전체":
@@ -1353,10 +1545,7 @@ elif page == "온라인팀(관리)":
                     "상태", ADMIN_STATUS_LIST, key="new_admin_status",
                     format_func=lambda s: f"{STATUS_ICONS.get(s, '')} {s}",
                 )
-                a_content = st.text_area(
-                    "내용 (텍스트 입력, 줄바꿈 유지 / HTML 소스 붙여넣기 지원)",
-                    key="new_admin_content", height=140,
-                )
+                a_content = rich_text_input("내용", key="new_admin_content")
                 a_files = st.file_uploader(
                     "첨부파일 (이미지 포함, 드래그앤드롭 지원)", accept_multiple_files=True, key="new_admin_files"
                 )
@@ -1444,8 +1633,8 @@ elif page == "온라인팀(관리)":
         posts = [p for p in posts if p.get("status", "등록") == view_filter]
     if quick_filter == "진행중":
         posts = [p for p in posts if p.get("status", "등록") not in ("공지", "완료")]
-    elif quick_filter == "체크완료":
-        posts = [p for p in posts if vote_all_voted(p, data) and p.get("status") != "완료"]
+    elif quick_filter == "투표 진행중":
+        posts = [p for p in posts if vote_started(p) and not vote_all_voted(p, data)]
     elif quick_filter == "완료처리필요":
         posts = [p for p in posts if vote_all_voted(p, data) and p.get("status") != "완료"]
     if search_q:
@@ -1457,10 +1646,22 @@ elif page == "온라인팀(관리)":
             )
         posts = [p for p in posts if _match_admin(p)]
 
+    highlight_id = st.session_state.pop("_highlight_post_id", None)
+    if highlight_id:
+        matched = [p for p in posts if p["id"] == highlight_id]
+        others = [p for p in posts if p["id"] != highlight_id]
+        posts = matched + others
+
     if not posts:
         st.info("표시할 게시글이 없습니다.")
 
     for p in posts:
+        if highlight_id and p["id"] == highlight_id:
+            st.markdown(
+                "<div style='background:#FFF7D6;border-left:4px solid #F5B301;"
+                "padding:4px 10px;border-radius:4px;margin-bottom:-4px;font-size:12.5px'>"
+                "🔎 확인하러 온 게시글</div>", unsafe_allow_html=True,
+            )
         with st.container(border=True):
             status_col, spacer_col, btn_group = st.columns([3, 5, 2])
             with status_col:
@@ -1498,7 +1699,7 @@ elif page == "온라인팀(관리)":
 
             if p["author"] == current_user and st.session_state.get(f"admin_editing_{p['id']}"):
                 new_title = st.text_input("제목 수정", value=p["title"], key=f"at_{p['id']}")
-                new_content = st.text_area("내용 수정", value=p.get("content", ""), key=f"ac_{p['id']}", height=100)
+                new_content = rich_text_input("내용 수정", value=p.get("content", ""), key=f"ac_{p['id']}")
 
                 st.write("기존 첨부파일 (삭제할 항목 체크)")
                 keep_flags = []
