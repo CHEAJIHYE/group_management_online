@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.11"
+APP_VERSION = "v7.13"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -320,8 +320,11 @@ def render_content(text):
         st.markdown(text.replace("\n", "  \n"))
 
 
+QUILL_POINT_SIZES = [f"{n}pt" for n in (8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48)]
+QUILL_FONT_OPTIONS = ["맑은고딕", "sans-serif", "serif", "monospace"]
+
 QUILL_TOOLBAR = [
-    [{"font": []}, {"size": ["small", False, "large", "huge"]}],
+    [{"font": QUILL_FONT_OPTIONS}, {"size": QUILL_POINT_SIZES}],
     ["bold", "italic", "underline", "strike"],
     [{"color": []}, {"background": []}],
     [{"list": "ordered"}, {"list": "bullet"}, {"indent": "-1"}, {"indent": "+1"}],
@@ -330,11 +333,34 @@ QUILL_TOOLBAR = [
     ["formula", "clean"],
 ]
 
+# 서식 편집기 기본 서체를 맑은 고딕으로, 글자 크기를 포인트 단위로 선택할 수 있게 하는 CSS.
+# (streamlit-quill은 커스텀 폰트/사이즈 값에 대한 표시 라벨을 자동으로 그려주지 않으므로
+# data-value를 그대로 라벨로 보여주는 규칙과, 각 값에 대응하는 실제 font-size/font-family를
+# 함께 정의합니다.)
+_QUILL_SIZE_CSS = "".join(f".ql-size-{n}pt {{font-size:{n}pt !important;}}\n" for n in
+                          (8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48))
+QUILL_CUSTOM_CSS = f"""
+<style>
+.ql-editor {{font-family:'맑은 고딕','Malgun Gothic',sans-serif !important;font-size:11pt !important;}}
+.ql-font-맑은고딕 {{font-family:'맑은 고딕','Malgun Gothic',sans-serif !important;}}
+.ql-snow .ql-picker.ql-font .ql-picker-label[data-value]::before,
+.ql-snow .ql-picker.ql-font .ql-picker-item[data-value]::before {{
+    content: attr(data-value) !important;
+}}
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value]::before {{
+    content: attr(data-value) !important;
+}}
+{_QUILL_SIZE_CSS}
+</style>
+"""
+
 
 def rich_text_input(label, value="", key=None, height=160):
     """가능하면 위지윅(서식) 에디터를, streamlit-quill 미설치 시 일반 텍스트 입력으로 대체합니다."""
     if QUILL_AVAILABLE:
         st.caption(label)
+        st.markdown(QUILL_CUSTOM_CSS, unsafe_allow_html=True)
         return st_quill(
             value=value, html=True, toolbar=QUILL_TOOLBAR,
             placeholder="내용을 입력하세요...", key=key,
@@ -439,11 +465,15 @@ def table_paste_input(key):
         "삽입됩니다. (서식 편집기 위쪽에는 직접 붙여넣기가 되지 않아 이 칸을 함께 씁니다)</div>",
         unsafe_allow_html=True,
     )
+    paste_mode = st.selectbox(
+        "붙여넣기 방식", ["표(HTML)로 붙여넣기", "🖼️ 이미지로 붙여넣기"],
+        key=f"{key}_mode", label_visibility="collapsed",
+    )
     pasted = st.text_area(
         "엑셀/표 붙여넣기", key=f"{key}_paste", height=80, label_visibility="collapsed",
         placeholder="여기에 엑셀 표를 붙여넣으세요 (Ctrl+V)",
     )
-    as_image = st.checkbox("🖼️ 이미지로 변환해서 삽입 (미체크 시 표 형태로 삽입)", key=f"{key}_as_image")
+    as_image = paste_mode == "🖼️ 이미지로 붙여넣기"
 
     if not pasted.strip():
         return ""
