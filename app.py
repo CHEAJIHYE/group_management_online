@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7"
+APP_VERSION = "v7.5"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -1902,6 +1902,7 @@ elif page == "온라인팀(관리)":
 
                 new_vote_options_text = None
                 new_vote_multi = None
+                add_new_vote = False
                 if p.get("vote"):
                     st.write("투표 선택지 수정 (한 줄에 하나씩, 텍스트가 같으면 기존 투표 결과가 유지됩니다)")
                     existing_opts_text = "\n".join(o["text"] for o in p["vote"]["options"])
@@ -1911,6 +1912,33 @@ elif page == "온라인팀(관리)":
                     new_vote_multi = st.checkbox(
                         "복수 선택 허용", value=p["vote"].get("multi", False), key=f"editvotemulti_{p['id']}"
                     )
+                else:
+                    add_new_vote = st.checkbox(
+                        "🗳️ 이 게시글에 투표 추가하기", key=f"admin_edit_add_vote_{p['id']}"
+                    )
+                    if add_new_vote:
+                        st.caption("투표 문항은 위의 '제목 수정' 내용이 그대로 사용됩니다.")
+                        templates = data["vote_templates"]
+                        template_names = ["(직접 입력)"] + [t["name"] for t in templates]
+                        etcol1, etcol2, etcol3 = st.columns([2, 1, 1])
+                        chosen_template = etcol1.selectbox(
+                            "투표 양식 불러오기", template_names, key=f"edit_vote_template_{p['id']}"
+                        )
+                        if etcol2.button("양식 불러오기", key=f"edit_vote_tpl_load_{p['id']}", width="stretch"):
+                            if chosen_template != "(직접 입력)":
+                                tpl = next(t for t in templates if t["name"] == chosen_template)
+                                st.session_state[f"edit_new_vote_options_{p['id']}"] = "\n".join(tpl["options"])
+                                st.rerun()
+                        if etcol3.button("👥 구성원 불러오기", key=f"edit_vote_member_load_{p['id']}", width="stretch"):
+                            st.session_state[f"edit_new_vote_options_{p['id']}"] = "\n".join(
+                                sorted_member_display_by_position(data)
+                            )
+                            st.rerun()
+                        st.session_state.setdefault(f"edit_new_vote_options_{p['id']}", "")
+                        new_vote_options_text = st.text_area(
+                            "선택지 (한 줄에 하나씩 입력)", key=f"edit_new_vote_options_{p['id']}", height=100
+                        )
+                        new_vote_multi = st.checkbox("복수 선택 허용", key=f"edit_new_vote_multi_{p['id']}")
 
                 if st.button("저장", key=f"admin_save_{p['id']}"):
                     kept = [att for keep, att in zip(keep_flags, existing_atts) if keep]
@@ -1926,6 +1954,15 @@ elif page == "온라인팀(관리)":
                         p["vote"]["options"] = [{"text": t, "voters": old_by_text.get(t, [])} for t in new_lines]
                         p["vote"]["multi"] = new_vote_multi
                         p["vote"]["question"] = p["title"]
+                    elif add_new_vote and new_vote_options_text is not None:
+                        new_lines = [l.strip() for l in new_vote_options_text.split("\n") if l.strip()]
+                        if len(new_lines) < 2:
+                            st.warning("투표 선택지를 2개 이상 입력해주세요.")
+                            st.stop()
+                        p["vote"] = {
+                            "question": p["title"], "multi": new_vote_multi,
+                            "options": [{"text": t, "voters": []} for t in new_lines],
+                        }
                     persist()
                     st.session_state[f"admin_editing_{p['id']}"] = False
                     st.rerun()
