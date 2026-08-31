@@ -1228,7 +1228,8 @@ elif page == "온라인팀(행사)":
 
     st.markdown("---")
 
-    posts = data["event_posts"]
+    # 최신 등록 글이 위로 오도록 (등록 순서 그대로 뒤집음 - 같은 분에 여러 개 등록돼도 정확)
+    posts = list(reversed(data["event_posts"]))
     shown = [p for p in posts if (filter_status == "전체" or p["status"] == filter_status)]
     if only_mine:
         shown = [p for p in shown if p["author"] == current_user]
@@ -1243,7 +1244,6 @@ elif page == "온라인팀(행사)":
                 or any(search_q in a["name"].lower() for a in atts)
             )
         shown = [p for p in shown if _match(p)]
-    shown.sort(key=lambda p: p["created_at"], reverse=True)
 
     if not shown:
         st.info("표시할 게시글이 없습니다.")
@@ -1426,7 +1426,8 @@ elif page == "온라인팀(관리)":
 
     st.markdown("---")
 
-    posts = sorted(data["admin_posts"], key=lambda p: p["created_at"], reverse=True)
+    # 최신 등록 글이 위로 오도록 (등록 순서 그대로 뒤집음 - 같은 분에 여러 개 등록돼도 정확)
+    posts = list(reversed(data["admin_posts"]))
     if view_filter != "전체":
         posts = [p for p in posts if p.get("status", "등록") == view_filter]
     if quick_filter == "진행중":
