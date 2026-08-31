@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.21"
+APP_VERSION = "v7.22"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -927,6 +927,7 @@ with st.sidebar:
         "무아스 스마트스토어": "https://brand.naver.com/mooas",
         "교보핫트랙스 어드민": "https://admin.hottracks.co.kr/admin/login/form",
         "샵바이 파트너 어드민": "https://partner.shopby.co.kr/login",
+        "스룩": "https://srookpay.com/",
     }
     st.markdown("---")
     st.markdown("##### 🔗 바로가기")
