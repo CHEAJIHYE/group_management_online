@@ -987,7 +987,7 @@ elif page == "일정 관리":
                 year_options.sort()
             new_year = y2.selectbox(
                 "연도 선택", year_options, index=year_options.index(st.session_state.cal_year),
-                key="cal_year_select", label_visibility="collapsed",
+                label_visibility="collapsed",
             )
             if new_year != st.session_state.cal_year:
                 st.session_state.cal_year = new_year
@@ -1006,7 +1006,7 @@ elif page == "일정 관리":
                 st.rerun()
             new_month = m2.selectbox(
                 "월 선택", list(range(1, 13)), index=st.session_state.cal_month - 1,
-                key="cal_month_select", label_visibility="collapsed",
+                label_visibility="collapsed",
             )
             if new_month != st.session_state.cal_month:
                 st.session_state.cal_month = new_month
