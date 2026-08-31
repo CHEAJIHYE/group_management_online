@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.17"
+APP_VERSION = "v7.18"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -321,6 +321,7 @@ def render_content(text):
 
 
 QUILL_TOOLBAR = [
+    [{"font": []}, {"size": []}],
     ["bold", "italic", "underline", "strike"],
     [{"color": []}, {"background": []}],
     [{"list": "ordered"}, {"list": "bullet"}, {"indent": "-1"}, {"indent": "+1"}],
@@ -329,44 +330,20 @@ QUILL_TOOLBAR = [
     ["formula", "clean"],
 ]
 
-# streamlit-quill(내부 Quill 버전)의 글꼴/크기 드롭다운은 목록을 펼치면 실제 항목명 대신
-# 현재 선택된 값("Normal" 등)이 모든 줄에 반복 표시되는 실제 렌더링 버그가 있어(사용자 확인
-# 재현), 내장 드롭다운 대신 정상 작동하는 별도의 Streamlit 드롭다운(글꼴 + 크기)을
-# 편집기 위에 배치합니다.
-QUILL_FONT_MAP = {
-    "맑은 고딕": "'맑은 고딕','Malgun Gothic',sans-serif",
-    "고딕체(Sans-serif)": "sans-serif",
-    "명조체(Serif)": "serif",
-    "고정폭(Monospace)": "monospace",
-}
-QUILL_SIZE_MAP = {"Small": "10pt", "Medium": "12pt", "Large": "16pt"}
+QUILL_CUSTOM_CSS = (
+    "<style>.ql-editor {font-family:'맑은 고딕','Malgun Gothic',sans-serif !important;}</style>"
+)
 
 
 def rich_text_input(label, value="", key=None, height=160):
-    """가능하면 위지윅(서식) 에디터를, streamlit-quill 미설치 시 일반 텍스트 입력으로 대체합니다.
-    글꼴/크기는 Quill 내장 드롭다운이 아니라(실제 렌더링 버그가 확인되어) 별도의
-    정상 작동하는 Streamlit 드롭다운으로 제공합니다."""
+    """가능하면 위지윅(서식) 에디터를, streamlit-quill 미설치 시 일반 텍스트 입력으로 대체합니다."""
     if QUILL_AVAILABLE:
         st.caption(label)
-        fcol, scol = st.columns(2)
-        font_choice = fcol.selectbox(
-            "글꼴", list(QUILL_FONT_MAP.keys()), key=f"{key}_font", label_visibility="collapsed",
+        st.markdown(QUILL_CUSTOM_CSS, unsafe_allow_html=True)
+        return st_quill(
+            value=value, html=True, toolbar=QUILL_TOOLBAR,
+            placeholder="내용을 입력하세요...", key=key,
         )
-        size_choice = scol.selectbox(
-            "크기", list(QUILL_SIZE_MAP.keys()), index=1, key=f"{key}_size", label_visibility="collapsed",
-        )
-        wrap_key = f"{key}_qwrap"
-        st.markdown(
-            f"<style>.st-key-{wrap_key} .ql-editor {{"
-            f"font-family:{QUILL_FONT_MAP[font_choice]} !important;"
-            f"font-size:{QUILL_SIZE_MAP[size_choice]} !important;}}</style>",
-            unsafe_allow_html=True,
-        )
-        with st.container(key=wrap_key):
-            return st_quill(
-                value=value, html=True, toolbar=QUILL_TOOLBAR,
-                placeholder="내용을 입력하세요...", key=key,
-            )
     st.caption(f"{label}  ·  서식 편집기를 쓰려면 `pip install streamlit-quill` 후 새로고침 해주세요.")
     return st.text_area(label, value=value, key=key, height=height, label_visibility="collapsed")
 
