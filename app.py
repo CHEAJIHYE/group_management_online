@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.18"
+APP_VERSION = "v7.19"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -911,6 +911,21 @@ with st.sidebar:
         st.info("구성원 관리에서 먼저 구성원을 추가해주세요.")
 
     current_user = authenticated_user
+
+    # 바로가기: 드롭다운에서 이름을 고르면 그 아래에 새 창으로 여는 버튼이 나타납니다.
+    # (브라우저 팝업 차단 정책상 드롭다운 선택만으로 곧바로 새 창을 여는 것은 불가능해서,
+    # 실제 클릭으로 새 창을 여는 st.link_button과 함께 사용합니다.)
+    SHORTCUT_LINKS = {
+        "무아스 스마트스토어": "https://brand.naver.com/mooas",
+    }
+    st.markdown("---")
+    st.markdown("##### 🔗 바로가기")
+    shortcut_choice = st.selectbox(
+        "바로가기", ["선택하세요"] + list(SHORTCUT_LINKS.keys()),
+        label_visibility="collapsed", key="shortcut_select",
+    )
+    if shortcut_choice != "선택하세요":
+        st.link_button(f"↗ {shortcut_choice} 새 창으로 열기", SHORTCUT_LINKS[shortcut_choice], width="stretch")
 
     if current_user:
         pending_votes = [
