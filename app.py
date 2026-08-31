@@ -30,7 +30,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.20"
+APP_VERSION = "v7.21"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -46,6 +46,14 @@ st.markdown(
         border: 1px solid #ccc; padding: 4px 10px; font-size: 13px;
     }
     table.pasted-excel-table th { background: #f5f5f5; }
+
+    /* Quill 서식 편집기의 글자 크기 클래스는 편집기 내부에서만 스타일이 정의되어 있어,
+       작성 후 게시글로 표시될 때는 크기가 반영되지 않는 문제가 있었습니다.
+       (Quill 기본 테마와 동일한 값으로) 페이지 전체에 적용해 작성 시 보이는 크기가
+       게시 후에도 그대로 유지되도록 합니다. */
+    .ql-size-small { font-size: 0.75em; }
+    .ql-size-large { font-size: 1.5em; }
+    .ql-size-huge { font-size: 2.5em; }
     </style>
     """,
     unsafe_allow_html=True,
