@@ -25,7 +25,6 @@ from PIL import Image
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
 APP_VERSION = "v6"
-APP_BUILD_DATE = "2026-08-28"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -45,6 +44,19 @@ DATA_PATH = os.path.join(os.path.dirname(__file__), "online_team_data.json")
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), "backups")
 
 KST = timezone(timedelta(hours=9))
+
+
+def get_build_date():
+    """이 app.py 파일이 마지막으로 수정(생성)된 날짜를 자동으로 가져옵니다.
+    파일을 갱신해서 배포할 때마다 별도로 손볼 필요 없이 항상 최신 날짜가 표시됩니다."""
+    try:
+        mtime = os.path.getmtime(__file__)
+        return datetime.fromtimestamp(mtime, tz=KST).strftime("%Y-%m-%d")
+    except Exception:
+        return "-"
+
+
+APP_BUILD_DATE = get_build_date()
 
 
 def kst_now():
