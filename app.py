@@ -24,8 +24,22 @@ from PIL import Image
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v5"
+APP_VERSION = "v6"
+APP_BUILD_DATE = "2026-08-28"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
+
+# 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
+# (컨테이너 key 기반 스코프 CSS는 이 환경에서 매칭되지 않아 전역 선택자로 적용합니다.)
+st.markdown(
+    """
+    <style>
+    div[data-testid="stVerticalBlock"] { gap: 0.25rem !important; }
+    div[data-testid="stHorizontalBlock"] { margin-top: 0rem !important; margin-bottom: 0rem !important; }
+    div[data-testid="element-container"] { margin-bottom: 0rem !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 DATA_PATH = os.path.join(os.path.dirname(__file__), "online_team_data.json")
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), "backups")
@@ -451,14 +465,26 @@ def render_week_block(week_dates, visible_schedules, data, week_key, current_mon
                             open_view_schedule_dialog(s["id"])
                             st.rerun()
 
-        if hidden_count > 0 and not show_all:
-            if st.button(f"더보기 +{hidden_count}개", key=f"{week_key}_more_btn"):
-                st.session_state[show_all_key] = True
-                st.rerun()
-        elif show_all and hidden_count > 0:
-            if st.button("접기", key=f"{week_key}_less_btn"):
-                st.session_state[show_all_key] = False
-                st.rerun()
+        if (hidden_count > 0 and not show_all) or (show_all and hidden_count > 0):
+            # 요일별로 실제 겹치는 일정 수를 계산해, 초과가 발생하는 그 날짜 칸에만
+            # "더보기" 버튼을 배치합니다 (전체 폭 버튼 대신 정확한 위치에 표시).
+            day_overlap_count = [0] * 7
+            for col_start, col_end, s in week_events:
+                for d_idx in range(col_start, col_end + 1):
+                    day_overlap_count[d_idx] += 1
+
+            more_cols = st.columns(7)
+            for d_idx in range(7):
+                with more_cols[d_idx]:
+                    if not show_all and day_overlap_count[d_idx] > MAX_VISIBLE_LANES:
+                        extra = day_overlap_count[d_idx] - MAX_VISIBLE_LANES
+                        if st.button(f"+{extra}개", key=f"{week_key}_more_btn_{d_idx}", width="stretch"):
+                            st.session_state[show_all_key] = True
+                            st.rerun()
+                    elif show_all and day_overlap_count[d_idx] > MAX_VISIBLE_LANES:
+                        if st.button("접기", key=f"{week_key}_less_btn_{d_idx}", width="stretch"):
+                            st.session_state[show_all_key] = False
+                            st.rerun()
 
         if not lanes:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
@@ -568,7 +594,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption(f"ⓒ {kst_today().year} {COPYRIGHT_OWNER} All Rights Reserved.")
-    st.caption(f"배포 버전: {APP_VERSION} RELEASE")
+    st.caption(f"배포 버전: {APP_VERSION} RELEASE ({APP_BUILD_DATE})")
 
 if names and current_user is None:
     st.title("🌐 온라인팀 통합관리시스템")
@@ -598,7 +624,11 @@ def open_view_schedule_dialog(sched_id):
     st.session_state.sched_dialog_date = None
 
 
-@st.dialog("일정")
+def _close_schedule_dialog():
+    st.session_state.sched_dialog_open = False
+
+
+@st.dialog("일정", on_dismiss=_close_schedule_dialog)
 def schedule_dialog():
     d = get_data()
     edit_id = st.session_state.sched_dialog_edit_id
@@ -685,7 +715,7 @@ if st.session_state.sched_dialog_open:
     schedule_dialog()
 
 
-@st.dialog("투표 확인")
+@st.dialog("투표 확인", on_dismiss=lambda: st.session_state.update({"_vote_empty_warning": False}))
 def vote_empty_warning_dialog():
     st.warning("선택지를 선택한 후 투표를 완료해주세요.")
     if st.button("확인", type="primary"):
@@ -818,8 +848,11 @@ if page == "대시보드":
     st.markdown("#### ⚙️ 온라인팀(관리)")
     ac1, ac2, ac3 = st.columns(3)
     with ac1:
-        dash_metric("📝 등록", len([p for p in data["admin_posts"] if p.get("status", "등록") == "등록"]),
-                    "온라인팀(관리)", admin_view_filter="등록", admin_quick_filter="없음")
+        dash_metric(
+            "📝 등록",
+            len([p for p in data["admin_posts"] if p.get("status", "등록") not in ("공지", "완료")]),
+            "온라인팀(관리)", admin_view_filter="전체", admin_quick_filter="진행중",
+        )
     with ac2:
         dash_metric(
             "✅ 체크완료",
@@ -1029,7 +1062,38 @@ elif page == "일정 관리":
 
     with tab3:
         st.markdown("#### 📋 전체 일정 목록 (시작일순, 시작일은 볼드체로 표기)")
+        lf1, lf2 = st.columns(2)
+        year_choices = ["전체"] + list(range(kst_today().year - 5, kst_today().year + 6))
+        list_year = lf1.selectbox("연도", year_choices, key="list_year_filter")
+        list_month = lf2.selectbox("월", ["전체"] + list(range(1, 13)), key="list_month_filter")
+
+        def _schedule_year_months(s):
+            s_start = date.fromisoformat(s["start"])
+            s_end = date.fromisoformat(s["end"])
+            months = set()
+            y, m = s_start.year, s_start.month
+            while (y, m) <= (s_end.year, s_end.month):
+                months.add((y, m))
+                m += 1
+                if m > 12:
+                    m = 1
+                    y += 1
+            return months
+
         listed = sorted(visible_schedules, key=lambda s: s["start"])
+        if list_year != "전체" or list_month != "전체":
+            filtered_listed = []
+            for s in listed:
+                yms = _schedule_year_months(s)
+                ok = True
+                if list_year != "전체" and not any(y == list_year for y, _ in yms):
+                    ok = False
+                if list_month != "전체" and not any(m == list_month for _, m in yms):
+                    ok = False
+                if ok:
+                    filtered_listed.append(s)
+            listed = filtered_listed
+
         if listed:
             for s in listed:
                 color = owner_color(s["owner"], data)
@@ -1050,8 +1114,13 @@ elif page == "일정 관리":
         st.markdown("#### 새 일정 등록")
         title = st.text_input("제목", key="direct_title")
         dcol1, dcol2 = st.columns(2)
-        s_d = dcol1.date_input("시작일", value=kst_today(), key="direct_start")
-        e_d = dcol2.date_input("종료일", value=kst_today(), key="direct_end", min_value=s_d)
+        st.session_state.setdefault("direct_start", kst_today())
+        s_d = dcol1.date_input("시작일", key="direct_start")
+        # 키가 있는 위젯은 이전에 저장된 값이 새 min_value보다 이전일 경우 충돌이 나므로 미리 보정합니다.
+        st.session_state.setdefault("direct_end", kst_today())
+        if st.session_state["direct_end"] < s_d:
+            st.session_state["direct_end"] = s_d
+        e_d = dcol2.date_input("종료일", key="direct_end", min_value=s_d)
         owner_opts = owner_names_combined(data)
         owner = st.selectbox("담당자 / 캘린더", owner_opts, key="direct_owner") if owner_opts else None
         if owner_opts:
@@ -1256,7 +1325,9 @@ elif page == "온라인팀(관리)":
         "보기", ["전체"] + ADMIN_STATUS_LIST, horizontal=True, key="admin_view_filter",
         format_func=lambda s: s if s == "전체" else f"{STATUS_ICONS.get(s, '')} {s}",
     )
-    quick_filter = st.selectbox("빠른 필터", ["없음", "체크완료", "완료처리필요"], key="admin_quick_filter")
+    quick_filter = st.selectbox(
+        "빠른 필터", ["없음", "진행중", "체크완료", "완료처리필요"], key="admin_quick_filter"
+    )
 
     if view_filter == "전체":
         if st.button("➕ 새 글 작성", key="toggle_new_admin_form"):
@@ -1358,7 +1429,9 @@ elif page == "온라인팀(관리)":
     posts = sorted(data["admin_posts"], key=lambda p: p["created_at"], reverse=True)
     if view_filter != "전체":
         posts = [p for p in posts if p.get("status", "등록") == view_filter]
-    if quick_filter == "체크완료":
+    if quick_filter == "진행중":
+        posts = [p for p in posts if p.get("status", "등록") not in ("공지", "완료")]
+    elif quick_filter == "체크완료":
         posts = [p for p in posts if vote_all_voted(p, data) and p.get("status") != "완료"]
     elif quick_filter == "완료처리필요":
         posts = [p for p in posts if vote_all_voted(p, data) and p.get("status") != "완료"]
