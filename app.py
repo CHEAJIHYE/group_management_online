@@ -31,7 +31,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.24"
+APP_VERSION = "v7.26"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -938,17 +938,23 @@ with st.sidebar:
         f'<option value="{url}">{name}</option>' for name, url in SHORTCUT_LINKS.items()
     )
     _shortcut_html = f"""
-        <select onchange="if(this.value){{window.open(this.value, '_blank');}} this.selectedIndex=0;"
-                style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #d0d0d0;
-                       font-size:14px;font-family:inherit;background:#f0f2f6;color:#333;
-                       box-sizing:border-box;">
+        <html><head><style>
+        html, body {{ margin:0; padding:0; overflow:hidden; }}
+        select {{
+            width:100%; padding:8px 10px; border-radius:6px; border:1px solid #d0d0d0;
+            font-size:14px; font-family:inherit; background:#f0f2f6; color:#333;
+            box-sizing:border-box; display:block;
+        }}
+        </style></head><body>
+        <select onchange="if(this.value){{window.open(this.value, '_blank');}} this.selectedIndex=0;">
           <option value="" selected>바로가기 선택...</option>
           {_shortcut_options_html}
         </select>
+        </body></html>
         """
     st.iframe(
         "data:text/html;charset=utf-8," + urllib.parse.quote(_shortcut_html),
-        height=44,
+        height=40,
     )
 
     if current_user:
@@ -2084,7 +2090,7 @@ elif page == "구성원 관리":
             border = "3px solid #111827" if selected else "1px solid #ddd"
             st.markdown(
                 f"<div style='width:100%;height:34px;border-radius:8px;background:{hexcode};"
-                f"border:{border};margin-bottom:2px'></div>", unsafe_allow_html=True,
+                f"border:{border}'></div><div style='height:8px'></div>", unsafe_allow_html=True,
             )
             if st.button(cname, key=f"swatch_{hexcode}", width="stretch"):
                 st.session_state.member_color_choice = hexcode
@@ -2097,7 +2103,7 @@ elif page == "구성원 관리":
         st.markdown(
             f"<div style='width:100%;height:34px;border-radius:8px;"
             "background:repeating-linear-gradient(45deg,#eee,#eee 4px,#fff 4px,#fff 8px);"
-            f"border:{border};margin-bottom:2px'></div>", unsafe_allow_html=True,
+            f"border:{border}'></div><div style='height:8px'></div>", unsafe_allow_html=True,
         )
         if st.button("기타", key="swatch_custom", width="stretch"):
             st.session_state.member_color_choice = "custom"
