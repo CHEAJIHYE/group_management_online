@@ -31,7 +31,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.26"
+APP_VERSION = "v7.27"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -1222,14 +1222,20 @@ if page == "대시보드":
     st.markdown("# 🌐 온라인팀 통합관리시스템")
     st.caption("일정 · 안건 · 투표를 한 곳에서 관리합니다.")
 
-    dc1, dc2 = st.columns(2)
+    dc1, dc2, dc3 = st.columns(3)
     with dc1:
         dash_metric(
-            "🗓️ 등록된 일정",
-            len([s for s in data["schedules"] if date.fromisoformat(s["end"]) >= kst_today()]),
+            "✅ 종료된 일정",
+            len([s for s in data["schedules"] if date.fromisoformat(s["end"]) < kst_today()]),
             "일정 관리",
         )
     with dc2:
+        dash_metric(
+            "🗓️ 진행중 일정",
+            len([s for s in data["schedules"] if date.fromisoformat(s["end"]) >= kst_today()]),
+            "일정 관리",
+        )
+    with dc3:
         dash_metric(
             "📢 등록된 공지", len([p for p in data["admin_posts"] if p.get("status") == "공지"]),
             "온라인팀(관리)", admin_view_filter="공지", admin_quick_filter="없음",
