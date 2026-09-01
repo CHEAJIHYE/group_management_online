@@ -32,7 +32,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.9"
+APP_VERSION = "v8.10"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -1456,8 +1456,12 @@ if page == "대시보드":
             st.caption("아직 생성된 백업이 없습니다.")
 
     st.markdown("---")
-    with st.expander("📜 최근 변경 로그 (게시글·댓글 수정/삭제 이력)"):
-        logs = sorted(data.get("change_logs", []), key=lambda l: l["time"], reverse=True)
+    with st.expander("📜 최근 변경 로그 (게시글·댓글 삭제 이력)"):
+        st.caption("수정 이력은 이제 각 게시글·댓글에 바로 표시되므로, 여기에는 삭제 이력만 남깁니다.")
+        logs = sorted(
+            [lg for lg in data.get("change_logs", []) if lg.get("action") == "삭제"],
+            key=lambda l: l["time"], reverse=True,
+        )
         if logs:
             for lg in logs[:30]:
                 board_label = {"event": "온라인팀(행사)", "admin": "온라인팀(관리)"}.get(lg.get("board"), "")
@@ -1466,7 +1470,7 @@ if page == "대시보드":
                     f" ({board_label}): {lg['title']}"
                 )
         else:
-            st.caption("변경 이력이 없습니다.")
+            st.caption("삭제 이력이 없습니다.")
 
 # --------------------------------------------------------------------------
 # 페이지: 일정 관리
