@@ -32,7 +32,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.6"
+APP_VERSION = "v8.7"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -1615,35 +1615,20 @@ elif page == "일정 관리":
         st.markdown("#### 📋 전체 일정 목록 (시작일순, 시작일은 볼드체로 표기)")
         lf1, lf2 = st.columns(2)
         year_choices = ["전체"] + list(range(kst_today().year - 5, kst_today().year + 6))
-        list_year = lf1.selectbox("연도", year_choices, key="list_year_filter")
-        list_month = lf2.selectbox("월", ["전체"] + list(range(1, 13)), key="list_month_filter")
+        list_year = lf1.selectbox(
+            "연도", year_choices, index=year_choices.index(kst_today().year), key="list_year_filter",
+        )
+        month_choices = ["전체"] + list(range(1, 13))
+        list_month = lf2.selectbox(
+            "월", month_choices, index=month_choices.index(kst_today().month), key="list_month_filter",
+        )
 
-        def _schedule_year_months(s):
-            s_start = date.fromisoformat(s["start"])
-            s_end = date.fromisoformat(s["end"])
-            months = set()
-            y, m = s_start.year, s_start.month
-            while (y, m) <= (s_end.year, s_end.month):
-                months.add((y, m))
-                m += 1
-                if m > 12:
-                    m = 1
-                    y += 1
-            return months
-
+        # 종료일이 다른 달까지 이어져도, 시작일이 속한 달 기준으로만 걸러줍니다.
         listed = sorted(visible_schedules, key=lambda s: s["start"])
-        if list_year != "전체" or list_month != "전체":
-            filtered_listed = []
-            for s in listed:
-                yms = _schedule_year_months(s)
-                ok = True
-                if list_year != "전체" and not any(y == list_year for y, _ in yms):
-                    ok = False
-                if list_month != "전체" and not any(m == list_month for _, m in yms):
-                    ok = False
-                if ok:
-                    filtered_listed.append(s)
-            listed = filtered_listed
+        if list_year != "전체":
+            listed = [s for s in listed if date.fromisoformat(s["start"]).year == list_year]
+        if list_month != "전체":
+            listed = [s for s in listed if date.fromisoformat(s["start"]).month == list_month]
 
         if listed:
             for s in listed:
