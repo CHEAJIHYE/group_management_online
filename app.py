@@ -32,7 +32,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8"
+APP_VERSION = "v8.1"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -90,22 +90,47 @@ def kst_today():
 
 @st.cache_data(ttl=600)
 def fetch_songpa_weather():
-    """송파구 문정동(위도/경도 기준) 현재 날씨를 wttr.in에서 가져옵니다.
+    """송파구 문정동(위도/경도 기준) 현재 날씨를 wttr.in에서 가져와 구조화된 값으로 반환합니다.
     (API 키가 필요 없는 무료 서비스라 별도 설정 없이 바로 사용 가능합니다.)"""
     try:
         resp = requests.get(
             "https://wttr.in/37.4853,127.1218",
-            params={"format": "%C+%t+(체감 %f)+습도 %h+바람 %w", "m": ""},
+            params={"format": "%C|%t|%f|%h|%w", "m": ""},
             headers={"User-Agent": "curl"},
             timeout=5,
         )
         if resp.status_code == 200:
             text = resp.text.strip()
-            if text and "Unknown location" not in text:
-                return text
+            if text and "Unknown location" not in text and "|" in text:
+                parts = [p.strip() for p in text.split("|")]
+                if len(parts) == 5:
+                    return {
+                        "condition": parts[0], "temp": parts[1], "feels_like": parts[2],
+                        "humidity": parts[3], "wind": parts[4],
+                    }
     except Exception:
         pass
     return None
+
+
+def weather_condition_to_emoji(condition_text):
+    """날씨 상태 텍스트를 보고 어울리는 픽토그램(이모지)을 골라줍니다."""
+    c = condition_text.lower()
+    if "thunder" in c:
+        return "⛈️"
+    if "snow" in c or "sleet" in c or "ice" in c:
+        return "❄️"
+    if "rain" in c or "drizzle" in c or "shower" in c:
+        return "🌧️"
+    if "fog" in c or "mist" in c or "haze" in c:
+        return "🌫️"
+    if "overcast" in c:
+        return "☁️"
+    if "cloud" in c:
+        return "⛅"
+    if "clear" in c or "sunny" in c:
+        return "☀️"
+    return "🌡️"
 
 
 FORTUNE_MESSAGES = [
@@ -1287,14 +1312,35 @@ def render_comments(p, board_name, current_user, data):
 # 페이지: 대시보드
 # --------------------------------------------------------------------------
 if page == "대시보드":
-    st.markdown("# 🌐 온라인팀 통합관리시스템")
-    st.caption("일정 · 안건 · 투표를 한 곳에서 관리합니다.")
-
-    _weather = fetch_songpa_weather()
-    if _weather:
-        st.caption(f"📍 송파구 문정동 날씨 ({kst_now().strftime('%Y-%m-%d %H:%M')} KST 기준): {_weather}")
-    else:
-        st.caption("📍 송파구 문정동 날씨: 정보를 불러오지 못했습니다. (네트워크 연결을 확인해주세요)")
+    header_col, weather_col = st.columns([2, 1])
+    with header_col:
+        st.markdown("# 🌐 온라인팀 통합관리시스템")
+        st.caption("일정 · 안건 · 투표를 한 곳에서 관리합니다.")
+    with weather_col:
+        _weather = fetch_songpa_weather()
+        if _weather:
+            _emoji = weather_condition_to_emoji(_weather["condition"])
+            st.markdown(
+                f"""
+                <div style='border:1px solid #eee;border-radius:12px;padding:12px 18px;
+                            display:flex;align-items:center;gap:14px;background:#fafbfc;
+                            margin-top:8px'>
+                    <div style='font-size:40px;line-height:1'>{_emoji}</div>
+                    <div>
+                        <div style='font-size:12px;color:#888'>
+                            📍 송파구 문정동 · {kst_now().strftime('%H:%M')} KST
+                        </div>
+                        <div style='font-size:20px;font-weight:700;color:#222'>{_weather['temp']}</div>
+                        <div style='font-size:11.5px;color:#666'>
+                            체감 {_weather['feels_like']} · 습도 {_weather['humidity']} · 바람 {_weather['wind']}
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("📍 송파구 문정동 날씨: 정보를 불러오지 못했습니다. (네트워크 연결을 확인해주세요)")
 
     dc1, dc2, dc3 = st.columns(3)
     with dc1:
