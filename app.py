@@ -17,6 +17,7 @@ import hashlib
 import uuid
 import base64
 import calendar as cal
+import requests
 from datetime import date, datetime, timedelta, timezone
 from PIL import Image
 
@@ -31,7 +32,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.27"
+APP_VERSION = "v8"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -85,6 +86,57 @@ def kst_now():
 
 def kst_today():
     return kst_now().date()
+
+
+@st.cache_data(ttl=600)
+def fetch_songpa_weather():
+    """송파구 문정동(위도/경도 기준) 현재 날씨를 wttr.in에서 가져옵니다.
+    (API 키가 필요 없는 무료 서비스라 별도 설정 없이 바로 사용 가능합니다.)"""
+    try:
+        resp = requests.get(
+            "https://wttr.in/37.4853,127.1218",
+            params={"format": "%C+%t+(체감 %f)+습도 %h+바람 %w", "m": ""},
+            headers={"User-Agent": "curl"},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            text = resp.text.strip()
+            if text and "Unknown location" not in text:
+                return text
+    except Exception:
+        pass
+    return None
+
+
+FORTUNE_MESSAGES = [
+    "오늘은 생각지도 못한 좋은 소식이 들려올 거예요!",
+    "차분히 준비한 일이 오늘 빛을 발합니다.",
+    "작은 친절이 큰 행운으로 돌아오는 하루예요.",
+    "오늘은 평소보다 판단력이 좋아지는 날입니다.",
+    "미뤄둔 일을 시작하기에 딱 좋은 타이밍이에요.",
+    "동료와의 대화 속에 좋은 아이디어가 숨어있어요.",
+    "오늘 하루는 여유를 가지면 더 잘 풀립니다.",
+    "작은 성취 하나가 자신감을 크게 키워줄 거예요.",
+    "뜻밖의 도움을 받게 될 수도 있는 날입니다.",
+    "오늘의 선택이 앞으로에 좋은 밑거름이 됩니다.",
+    "웃는 얼굴로 시작하면 하루 종일 순조로워요.",
+    "오늘은 새로운 걸 시도해도 좋은 결과가 있어요.",
+    "잠깐의 휴식이 큰 효율로 돌아오는 하루입니다.",
+    "누군가에게 오늘 건넨 말 한마디가 오래 기억될 거예요.",
+    "계획한 대로 착착 진행되는 순조로운 하루예요.",
+    "오늘은 평소보다 운이 좋은 편이니 도전해보세요.",
+    "차 한 잔의 여유가 좋은 영감을 줄 거예요.",
+    "함께 일하는 사람들과 좋은 호흡을 보이는 날입니다.",
+    "오늘 내린 결정, 나중에 돌아보면 참 잘한 선택일 거예요.",
+    "작은 디테일까지 신경 쓰면 오늘은 더 빛나요.",
+]
+
+
+def get_daily_fortune(username):
+    """사용자 이름 + 오늘 날짜(KST)를 기준으로 하루 동안 고정된 운세 한 줄을 돌려줍니다."""
+    seed_str = f"{username}_{kst_today().isoformat()}"
+    idx = int(hashlib.md5(seed_str.encode("utf-8")).hexdigest(), 16) % len(FORTUNE_MESSAGES)
+    return FORTUNE_MESSAGES[idx]
 
 
 def hash_pw(pw):
@@ -913,6 +965,8 @@ with st.sidebar:
             if st.button("확인", key=f"pw_confirm_{selected_name}"):
                 if hash_pw(pw_input) == member_rec.get("password_hash", DEFAULT_PW_HASH):
                     st.session_state.authed_users.add(selected_name)
+                    st.session_state["_fortune_dialog_open"] = True
+                    st.session_state["_fortune_dialog_user"] = selected_name
                     st.rerun()
                 else:
                     st.error("비밀번호가 올바르지 않습니다.")
@@ -1124,6 +1178,20 @@ def vote_empty_warning_dialog():
 if st.session_state.get("_vote_empty_warning"):
     vote_empty_warning_dialog()
 
+
+@st.dialog("🔮 오늘의 운세", on_dismiss=lambda: st.session_state.update({"_fortune_dialog_open": False}))
+def fortune_dialog():
+    fortune_user = st.session_state.get("_fortune_dialog_user", "")
+    st.markdown(f"#### {fortune_user}님, 오늘 하루도 화이팅!")
+    st.info(get_daily_fortune(fortune_user))
+    if st.button("확인", type="primary"):
+        st.session_state["_fortune_dialog_open"] = False
+        st.rerun()
+
+
+if st.session_state.get("_fortune_dialog_open"):
+    fortune_dialog()
+
 # --------------------------------------------------------------------------
 # 댓글 렌더링 (수정/삭제/답변/멘션 지원)
 # --------------------------------------------------------------------------
@@ -1221,6 +1289,12 @@ def render_comments(p, board_name, current_user, data):
 if page == "대시보드":
     st.markdown("# 🌐 온라인팀 통합관리시스템")
     st.caption("일정 · 안건 · 투표를 한 곳에서 관리합니다.")
+
+    _weather = fetch_songpa_weather()
+    if _weather:
+        st.caption(f"📍 송파구 문정동 날씨 ({kst_now().strftime('%Y-%m-%d %H:%M')} KST 기준): {_weather}")
+    else:
+        st.caption("📍 송파구 문정동 날씨: 정보를 불러오지 못했습니다. (네트워크 연결을 확인해주세요)")
 
     dc1, dc2, dc3 = st.columns(3)
     with dc1:
