@@ -32,7 +32,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.4"
+APP_VERSION = "v8.5"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -898,6 +898,15 @@ def render_week_block(
                     continue
                 color = owner_color(s["owner"], data)
                 cell_key = f"{week_key}_ev_{s['id']}"
+                s_start = date.fromisoformat(s["start"])
+                s_end = date.fromisoformat(s["end"])
+                _today = kst_today()
+                if s_start <= _today <= s_end:
+                    status_icon = "🔵"  # 진행중
+                elif s_start > _today:
+                    status_icon = "⏳"  # 예정
+                else:
+                    status_icon = "✅"  # 종료
                 st.markdown(
                     f"<style>.st-key-{cell_key} button {{background:{color} !important;"
                     "color:#333 !important;border:none !important;font-size:10px !important;"
@@ -908,7 +917,9 @@ def render_week_block(
                 )
                 with col:
                     with st.container(key=cell_key):
-                        if st.button(s["title"], key=f"evbtn_{week_key}_{s['id']}", width="stretch"):
+                        if st.button(
+                            f"{status_icon} {s['title']}", key=f"evbtn_{week_key}_{s['id']}", width="stretch"
+                        ):
                             open_view_schedule_dialog(s["id"])
                             st.rerun()
 
@@ -1553,6 +1564,7 @@ elif page == "일정 관리":
                 st.rerun()
 
         st.caption("날짜를 클릭하면 일정 등록 팝업이, 색상 블록을 클릭하면 상세 팝업이 열립니다.")
+        st.caption("🔵 진행중  ·  ⏳ 예정  ·  ✅ 종료  (일정 앞 아이콘, 오늘 기준 KST)")
 
         year = st.session_state.cal_year
         month = st.session_state.cal_month
