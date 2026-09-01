@@ -8,6 +8,7 @@
 """
 
 import streamlit as st
+import urllib.parse
 import json
 import os
 import re
@@ -30,7 +31,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v7.22"
+APP_VERSION = "v7.23"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -920,9 +921,11 @@ with st.sidebar:
 
     current_user = authenticated_user
 
-    # 바로가기: 드롭다운에서 이름을 고르면 그 아래에 새 창으로 여는 버튼이 나타납니다.
-    # (브라우저 팝업 차단 정책상 드롭다운 선택만으로 곧바로 새 창을 여는 것은 불가능해서,
-    # 실제 클릭으로 새 창을 여는 st.link_button과 함께 사용합니다.)
+    # 바로가기: 순수 HTML/JS 드롭다운으로 만들어서, Streamlit 서버 왕복(rerun) 없이
+    # 선택하는 즉시(같은 사용자 동작 안에서) 새 창이 열리도록 합니다.
+    # (일반 st.selectbox로 만들면 선택 → 서버 재실행 → 새 창 열기 순서가 되어 브라우저의
+    # 팝업 차단 정책에 걸리지만, 이 방식은 선택과 창 열기가 브라우저 안에서 한 번에
+    # 일어나므로 팝업 차단을 받지 않습니다.)
     SHORTCUT_LINKS = {
         "무아스 스마트스토어": "https://brand.naver.com/mooas",
         "교보핫트랙스 어드민": "https://admin.hottracks.co.kr/admin/login/form",
@@ -931,12 +934,22 @@ with st.sidebar:
     }
     st.markdown("---")
     st.markdown("##### 🔗 바로가기")
-    shortcut_choice = st.selectbox(
-        "바로가기", ["선택하세요"] + list(SHORTCUT_LINKS.keys()),
-        label_visibility="collapsed", key="shortcut_select",
+    _shortcut_options_html = "".join(
+        f'<option value="{url}">{name}</option>' for name, url in SHORTCUT_LINKS.items()
     )
-    if shortcut_choice != "선택하세요":
-        st.link_button(f"↗ {shortcut_choice} 새 창으로 열기", SHORTCUT_LINKS[shortcut_choice], width="stretch")
+    _shortcut_html = f"""
+        <select onchange="if(this.value){{window.open(this.value, '_blank');}} this.selectedIndex=0;"
+                style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid #d0d0d0;
+                       font-size:14px;font-family:inherit;background:#f0f2f6;color:#333;
+                       box-sizing:border-box;">
+          <option value="" selected>바로가기 선택...</option>
+          {_shortcut_options_html}
+        </select>
+        """
+    st.iframe(
+        "data:text/html;charset=utf-8," + urllib.parse.quote(_shortcut_html),
+        height=44,
+    )
 
     if current_user:
         pending_votes = [
