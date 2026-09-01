@@ -32,7 +32,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.8"
+APP_VERSION = "v8.9"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -1245,9 +1245,9 @@ def render_comments(p, board_name, current_user, data):
             if editing:
                 pass
             else:
-                edited_note = f" · ✏️ 수정됨 ({c['edited_at']})" if c.get("edited_at") else ""
+                time_display = f"✏️ 수정됨 ({c['edited_at']})" if c.get("edited_at") else c["time"]
                 st.markdown(
-                    f"{prefix}**{c['author']}** ({c['time']}{edited_note}): {c['text']}",
+                    f"{prefix}**{c['author']}** ({time_display}): {c['text']}",
                     unsafe_allow_html=True,
                 )
         with btn_group:
@@ -1829,8 +1829,8 @@ elif page == "온라인팀(행사)":
                         st.rerun()
 
             st.markdown(f"### {p['title']}")
-            _edited_note = f" · ✏️ 수정됨 ({p['edited_at']})" if p.get("edited_at") else ""
-            st.caption(f"작성자 {p['author']} · {p['created_at']}{_edited_note}")
+            _time_display = f"✏️ 수정됨 ({p['edited_at']})" if p.get("edited_at") else p["created_at"]
+            st.caption(f"작성자 {p['author']} · {_time_display}")
 
             existing_atts = p.get("files", []) + p.get("images", [])
 
@@ -2045,8 +2045,8 @@ elif page == "온라인팀(관리)":
             if vote_all_voted(p, data):
                 title_prefix += "✅ "
             st.markdown(f"### {title_prefix}{p['title']}")
-            _edited_note = f" · ✏️ 수정됨 ({p['edited_at']})" if p.get("edited_at") else ""
-            st.caption(f"작성자 {p['author']} · {p['created_at']}{_edited_note}")
+            _time_display = f"✏️ 수정됨 ({p['edited_at']})" if p.get("edited_at") else p["created_at"]
+            st.caption(f"작성자 {p['author']} · {_time_display}")
 
             existing_atts = p.get("files", []) + p.get("images", [])
 
