@@ -32,7 +32,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.1"
+APP_VERSION = "v8.3"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -134,31 +134,42 @@ def weather_condition_to_emoji(condition_text):
 
 
 FORTUNE_MESSAGES = [
-    "오늘은 생각지도 못한 좋은 소식이 들려올 거예요!",
-    "차분히 준비한 일이 오늘 빛을 발합니다.",
-    "작은 친절이 큰 행운으로 돌아오는 하루예요.",
-    "오늘은 평소보다 판단력이 좋아지는 날입니다.",
-    "미뤄둔 일을 시작하기에 딱 좋은 타이밍이에요.",
-    "동료와의 대화 속에 좋은 아이디어가 숨어있어요.",
-    "오늘 하루는 여유를 가지면 더 잘 풀립니다.",
-    "작은 성취 하나가 자신감을 크게 키워줄 거예요.",
-    "뜻밖의 도움을 받게 될 수도 있는 날입니다.",
-    "오늘의 선택이 앞으로에 좋은 밑거름이 됩니다.",
-    "웃는 얼굴로 시작하면 하루 종일 순조로워요.",
-    "오늘은 새로운 걸 시도해도 좋은 결과가 있어요.",
-    "잠깐의 휴식이 큰 효율로 돌아오는 하루입니다.",
-    "누군가에게 오늘 건넨 말 한마디가 오래 기억될 거예요.",
-    "계획한 대로 착착 진행되는 순조로운 하루예요.",
-    "오늘은 평소보다 운이 좋은 편이니 도전해보세요.",
-    "차 한 잔의 여유가 좋은 영감을 줄 거예요.",
-    "함께 일하는 사람들과 좋은 호흡을 보이는 날입니다.",
-    "오늘 내린 결정, 나중에 돌아보면 참 잘한 선택일 거예요.",
-    "작은 디테일까지 신경 쓰면 오늘은 더 빛나요.",
+    "오늘은 생각지도 못한 좋은 소식이 들려옵니다!",
+    "차분히 준비한 일이 오늘 확실히 빛을 발해요.",
+    "오늘 베푼 작은 친절이 큰 행운으로 돌아옵니다.",
+    "오늘은 판단력과 감각이 최고조에 이르는 날이에요.",
+    "미뤄왔던 일도 오늘은 술술 잘 풀립니다.",
+    "동료와의 대화 속에서 반짝이는 아이디어를 얻게 돼요.",
+    "오늘 하루는 시작부터 끝까지 순조롭게 흘러갑니다.",
+    "작은 성취 하나가 오늘 자신감을 크게 키워줘요.",
+    "생각지 못한 곳에서 든든한 도움을 받게 됩니다.",
+    "오늘의 선택이 앞으로 좋은 결실로 이어집니다.",
+    "오늘은 웃는 일이 유독 많이 생기는 하루예요.",
+    "새롭게 시도하는 일마다 좋은 결과가 따라옵니다.",
+    "짧은 휴식만으로도 오늘은 효율이 두 배가 돼요.",
+    "오늘 건넨 말 한마디가 누군가에게 큰 힘이 됩니다.",
+    "계획한 대로 모든 게 착착 순조롭게 진행돼요.",
+    "오늘은 유난히 운이 좋게 따라주는 하루입니다.",
+    "여유로운 한 잔의 시간이 좋은 영감을 선물해요.",
+    "함께하는 사람들과 완벽한 호흡을 보여주는 날이에요.",
+    "오늘 내린 결정은 두고두고 잘한 선택이 됩니다.",
+    "세심하게 신경 쓴 만큼 오늘은 더 빛나는 하루예요.",
+    "오늘은 원하는 일이 술술 풀리는 행운의 날입니다.",
+    "주변 사람들에게 좋은 인상을 남기는 하루가 될 거예요.",
+    "오늘 만나는 사람과 특별히 좋은 인연이 이어집니다.",
+    "생각보다 빨리, 그리고 잘 마무리되는 하루예요.",
+    "오늘은 자신감을 갖고 나서면 무엇이든 잘 됩니다.",
+    "긍정적인 에너지가 하루 종일 함께하는 날이에요.",
+    "오늘 하는 노력은 반드시 좋은 보답으로 돌아옵니다.",
+    "예상보다 훨씬 즐겁고 기분 좋은 하루가 펼쳐져요.",
+    "오늘은 모든 일이 나에게 유리하게 흘러갑니다.",
+    "작은 행운들이 하루 종일 이어지는 날이에요.",
 ]
 
 
 def get_daily_fortune(username):
-    """사용자 이름 + 오늘 날짜(KST)를 기준으로 하루 동안 고정된 운세 한 줄을 돌려줍니다."""
+    """사용자 이름 + 오늘 날짜(KST)를 기준으로 하루 동안 고정된, 항상 긍정적인 운세
+    한 줄을 돌려줍니다."""
     seed_str = f"{username}_{kst_today().isoformat()}"
     idx = int(hashlib.md5(seed_str.encode("utf-8")).hexdigest(), 16) % len(FORTUNE_MESSAGES)
     return FORTUNE_MESSAGES[idx]
@@ -941,6 +952,11 @@ if _pending_nav:
         st.session_state[k] = v
 
 with st.sidebar:
+    _persisted_authed = st.session_state.get("authed_users", set())
+    _persisted_user = st.session_state.get("current_user_select")
+    if _persisted_user and _persisted_user in _persisted_authed:
+        st.info(f"🔮 {_persisted_user}님의 오늘의 운세\n\n{get_daily_fortune(_persisted_user)}")
+
     if st.button("🔄 새로고침", width="stretch"):
         if "data" in st.session_state:
             del st.session_state["data"]
@@ -990,8 +1006,6 @@ with st.sidebar:
             if st.button("확인", key=f"pw_confirm_{selected_name}"):
                 if hash_pw(pw_input) == member_rec.get("password_hash", DEFAULT_PW_HASH):
                     st.session_state.authed_users.add(selected_name)
-                    st.session_state["_fortune_dialog_open"] = True
-                    st.session_state["_fortune_dialog_user"] = selected_name
                     st.rerun()
                 else:
                     st.error("비밀번호가 올바르지 않습니다.")
@@ -1203,20 +1217,6 @@ def vote_empty_warning_dialog():
 if st.session_state.get("_vote_empty_warning"):
     vote_empty_warning_dialog()
 
-
-@st.dialog("🔮 오늘의 운세", on_dismiss=lambda: st.session_state.update({"_fortune_dialog_open": False}))
-def fortune_dialog():
-    fortune_user = st.session_state.get("_fortune_dialog_user", "")
-    st.markdown(f"#### {fortune_user}님, 오늘 하루도 화이팅!")
-    st.info(get_daily_fortune(fortune_user))
-    if st.button("확인", type="primary"):
-        st.session_state["_fortune_dialog_open"] = False
-        st.rerun()
-
-
-if st.session_state.get("_fortune_dialog_open"):
-    fortune_dialog()
-
 # --------------------------------------------------------------------------
 # 댓글 렌더링 (수정/삭제/답변/멘션 지원)
 # --------------------------------------------------------------------------
@@ -1341,6 +1341,8 @@ if page == "대시보드":
             )
         else:
             st.caption("📍 송파구 문정동 날씨: 정보를 불러오지 못했습니다. (네트워크 연결을 확인해주세요)")
+
+    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
 
     dc1, dc2, dc3 = st.columns(3)
     with dc1:
