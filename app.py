@@ -33,7 +33,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.26"
+APP_VERSION = "v8.27"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -2320,7 +2320,10 @@ elif page == "구성원 관리":
         with swatch_cols[i % 6]:
             selected = st.session_state.member_color_choice == hexcode
             border = "3px solid #111827" if selected else "1px solid #ddd"
-            cell_key = f"swatchbtn_{hexcode}"
+            # 주의: hexcode에 포함된 '#'는 CSS 선택자에서 ID 선택자로 해석되어 클래스명이
+            # 깨지므로(예: .st-key-swatchbtn_#F5A9A9 는 잘못된 선택자), key에는 '#'을 뺀
+            # 안전한 문자열만 사용합니다.
+            cell_key = f"swatchbtn_{hexcode.lstrip('#')}"
             st.markdown(
                 f"<style>.st-key-{cell_key} button {{background:{hexcode} !important;"
                 f"border:{border} !important;min-height:44px !important;width:100%;"
