@@ -33,7 +33,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.25"
+APP_VERSION = "v8.26"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -2320,16 +2320,14 @@ elif page == "구성원 관리":
         with swatch_cols[i % 6]:
             selected = st.session_state.member_color_choice == hexcode
             border = "3px solid #111827" if selected else "1px solid #ddd"
-            wrap_key = f"swatchwrap_{hexcode}"
+            cell_key = f"swatchbtn_{hexcode}"
             st.markdown(
-                f"<style>.st-key-{wrap_key} {{display:flex;flex-direction:column;gap:10px;}}</style>",
+                f"<style>.st-key-{cell_key} button {{background:{hexcode} !important;"
+                f"border:{border} !important;min-height:44px !important;width:100%;"
+                "color:#333 !important;font-weight:600 !important;}}</style>",
                 unsafe_allow_html=True,
             )
-            with st.container(key=wrap_key):
-                st.markdown(
-                    f"<div style='width:100%;height:34px;border-radius:8px;background:{hexcode};"
-                    f"border:{border}'></div>", unsafe_allow_html=True,
-                )
+            with st.container(key=cell_key):
                 if st.button(cname, key=f"swatch_{hexcode}", width="stretch"):
                     st.session_state.member_color_choice = hexcode
                     st.rerun()
@@ -2338,17 +2336,14 @@ elif page == "구성원 관리":
     other_col = swatch_cols[len(available_presets) % 6] if len(available_presets) % 6 != 0 else st.columns(6)[0]
     with other_col:
         border = "3px solid #111827" if other_selected else "1px dashed #999"
-        other_wrap_key = "swatchwrap_custom"
+        other_key = "swatchbtn_custom"
         st.markdown(
-            f"<style>.st-key-{other_wrap_key} {{display:flex;flex-direction:column;gap:10px;}}</style>",
+            f"<style>.st-key-{other_key} button {{"
+            "background:repeating-linear-gradient(45deg,#eee,#eee 4px,#fff 4px,#fff 8px) !important;"
+            f"border:{border} !important;min-height:44px !important;width:100%;color:#333 !important;}}</style>",
             unsafe_allow_html=True,
         )
-        with st.container(key=other_wrap_key):
-            st.markdown(
-                f"<div style='width:100%;height:34px;border-radius:8px;"
-                "background:repeating-linear-gradient(45deg,#eee,#eee 4px,#fff 4px,#fff 8px);"
-                f"border:{border}'></div>", unsafe_allow_html=True,
-            )
+        with st.container(key=other_key):
             if st.button("기타", key="swatch_custom", width="stretch"):
                 st.session_state.member_color_choice = "custom"
                 st.rerun()
