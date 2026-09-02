@@ -33,7 +33,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.19"
+APP_VERSION = "v8.20"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -57,6 +57,12 @@ st.markdown(
     .ql-size-small { font-size: 0.75em; }
     .ql-size-large { font-size: 1.5em; }
     .ql-size-huge { font-size: 2.5em; }
+
+    /* 사이드바 너비를 현재 기본 크기로 고정합니다 (드래그로 넓히거나 좁힐 수 없도록). */
+    [data-testid="stSidebar"] {
+        min-width: 336px !important;
+        max-width: 336px !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -1551,7 +1557,7 @@ if page == "대시보드":
         st.info("등록된 예정 일정이 없습니다.")
 
     st.markdown("---")
-    left_col, _ = st.columns([1, 3])
+    left_col, right_col = st.columns([1, 1])
     with left_col:
         st.markdown("##### 💾 백업")
         st.caption(
@@ -1580,20 +1586,21 @@ if page == "대시보드":
         else:
             st.caption("아직 생성된 백업이 없습니다.")
 
-    st.markdown("---")
-    with st.expander("📜 최근 변경 로그 (게시글·댓글 삭제 이력)"):
+    with right_col:
+        st.markdown("##### 📜 최근 변경 로그")
         st.caption("수정 이력은 이제 각 게시글·댓글에 바로 표시되므로, 여기에는 삭제 이력만 남깁니다.")
         logs = sorted(
             [lg for lg in data.get("change_logs", []) if lg.get("action") == "삭제"],
             key=lambda l: l["time"], reverse=True,
         )
         if logs:
-            for lg in logs[:30]:
-                board_label = {"event": "온라인팀(행사)", "admin": "온라인팀(관리)"}.get(lg.get("board"), "")
-                st.markdown(
-                    f"- `{lg['time']}` **{lg['user']}** — {lg['target_type']} {lg['action']}"
-                    f" ({board_label}): {lg['title']}"
-                )
+            with st.container(height=220):
+                for lg in logs[:30]:
+                    board_label = {"event": "온라인팀(행사)", "admin": "온라인팀(관리)"}.get(lg.get("board"), "")
+                    st.markdown(
+                        f"- `{lg['time']}` **{lg['user']}** — {lg['target_type']} {lg['action']}"
+                        f" ({board_label}): {lg['title']}"
+                    )
         else:
             st.caption("삭제 이력이 없습니다.")
 
