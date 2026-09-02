@@ -33,7 +33,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="온라인팀 통합관리시스템", page_icon="🌐", layout="wide")
 
-APP_VERSION = "v8.18"
+APP_VERSION = "v8.19"
 COPYRIGHT_OWNER = "MOOAS TEAM ONLINE"
 
 # 캘린더 등 여러 st.columns 행이 연달아 쌓이는 곳의 세로 여백을 전역으로 줄입니다.
@@ -230,10 +230,12 @@ def _extract_summary_sentence(extract):
     return sentence
 
 
-def fetch_wikipedia_category_fact(category_label):
+def fetch_wikipedia_category_fact(category_label, exclude_titles=None):
     """한국어 위키백과의 특정 분류(카테고리) 안에서 무작위 문서 요약을 가져옵니다.
-    (위키백과가 직접 운영하는 정식 공개 API를 사용합니다.) 후보 분류명 중 하나라도
-    문서를 찾으면 (문서 제목, 한 줄 요약)을 반환하고, 전부 실패하면 None을 반환합니다."""
+    (위키백과가 직접 운영하는 정식 공개 API를 사용합니다.) exclude_titles에 있는
+    문서는 건너뜁니다. 후보 분류명 중 하나라도 문서를 찾으면 (문서 제목, 한 줄 요약)을
+    반환하고, 전부 실패하면 None을 반환합니다."""
+    exclude_titles = exclude_titles or set()
     candidates = list(WIKI_CATEGORY_MAP.get(category_label, []))
     random.shuffle(candidates)
     for cat_title in candidates:
@@ -249,6 +251,7 @@ def fetch_wikipedia_category_fact(category_label):
             if list_resp.status_code != 200:
                 continue
             members = list_resp.json().get("query", {}).get("categorymembers", [])
+            members = [m for m in members if m.get("title") not in exclude_titles]
             if not members:
                 continue
             random.shuffle(members)
@@ -279,12 +282,21 @@ def get_dynamic_insight():
     해당 분류의 위키백과 문서에서 인사이트를 가져옵니다. 네트워크 문제나 해당 분류에
     적절한 문서를 찾지 못하면 내장된 큐레이션 문구 중 하나로 대체합니다
     (항상 뭔가는 표시됨). '트렌드'/'밈'은 위키백과에 마땅한 분류가 없어 큐레이션 문구
-    비중이 더 높을 수 있습니다."""
+    비중이 더 높을 수 있습니다. 세션 안에서 이미 보여준 문서·문구는 다시 나오지
+    않도록 걸러내고, 큐레이션 문구를 전부 다 쓰면 그때 처음부터 다시 순환합니다."""
+    shown = st.session_state.setdefault("_shown_insight_titles", set())
     category = random.choice(list(INSIGHT_CATEGORIES.keys()))
-    wiki_result = fetch_wikipedia_category_fact(category)
+    wiki_result = fetch_wikipedia_category_fact(category, exclude_titles=shown)
     if wiki_result:
+        shown.add(wiki_result[0])
         return wiki_result
-    return category, random.choice(INSIGHT_CATEGORIES[category])
+    all_curated = [(cat, fact) for cat, facts in INSIGHT_CATEGORIES.items() for fact in facts]
+    remaining = [item for item in all_curated if item[1] not in shown]
+    if not remaining:
+        remaining = all_curated
+    choice = random.choice(remaining)
+    shown.add(choice[1])
+    return choice
 
 
 def hash_pw(pw):
